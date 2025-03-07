@@ -1,0 +1,74 @@
+# Dependencies
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Service account credentials
+service-account.json
+*-service-account.json
+*.pem
+*.key
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor directories and files
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+*.sublime-*
+.history/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Docker volumes data
+redis-data/
+worker-data/
+
+# Generated media files
+*.mp3
+*.mp4
+*.wav
+*.jpg
+*.png
+*.gif
+
+# AWS credentials
+.aws/
+aws.json
