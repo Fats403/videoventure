@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import { S3Service } from "./s3.service";
 import { blendVideos, type TransitionType } from "ffmpeg-transitions";
@@ -215,5 +216,29 @@ export class VideoProcessingService {
       console.error(`Error downloading video from S3: ${error.message}`);
       throw error;
     }
+  }
+
+  async generateThumbnail(
+    videoPath: string,
+    outputPath: string,
+    timeInSeconds = 1
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      ffmpeg(videoPath)
+        .screenshots({
+          timestamps: [timeInSeconds],
+          filename: path.basename(outputPath),
+          folder: path.dirname(outputPath),
+          size: "1280x720", // 720p thumbnail
+        })
+        .on("end", () => {
+          console.log("✅ Thumbnail generated successfully");
+          resolve(outputPath);
+        })
+        .on("error", (err) => {
+          console.error("❌ Error generating thumbnail:", err);
+          reject(err);
+        });
+    });
   }
 }

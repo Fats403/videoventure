@@ -31,12 +31,15 @@ const worker = new Worker(
     console.log(`Processing job ${job.id}: ${job.name}`);
 
     try {
-      const { jobId, storyIdea, maxScenes, voiceId } = job.data;
+      const { jobId, storyIdea, maxScenes, voiceId, videoId, userId } =
+        job.data;
 
       // Process the story and generate the video
       const result = await videoPipelineService.processStory(
         storyIdea,
         jobId,
+        videoId,
+        userId,
         maxScenes,
         voiceId
       );

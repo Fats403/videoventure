@@ -13,6 +13,7 @@ import {
   SceneWithAudio,
 } from "./video-processing.service";
 import { S3Service } from "./s3.service";
+import { JobStatus } from "../types";
 
 export interface JobResult {
   videoId: string;
@@ -60,6 +61,7 @@ export class VideoPipelineService {
    * Process a story into a video
    * @param storyIdea - The story concept
    * @param jobId - Unique ID for this job
+   * @param videoId - Unique ID for this video
    * @param maxScenes - Maximum number of scenes
    * @param voiceId - ElevenLabs voice ID
    * @returns Job result with video paths
@@ -67,6 +69,8 @@ export class VideoPipelineService {
   async processStory(
     storyIdea: string,
     jobId: string,
+    videoId: string,
+    userId: string,
     maxScenes = 5,
     voiceId = "JBFqnCBsd6RMkjVDRZzb"
   ): Promise<JobResult> {
@@ -80,7 +84,10 @@ export class VideoPipelineService {
 
     try {
       // Update job status in Firestore
-      await this.updateJobStatus(jobId, "IN_PROGRESS");
+      await Promise.all([
+        this.updateJobStatus(jobId, "IN_PROGRESS"),
+        this.updateVideoStatus(videoId, "IN_PROGRESS", jobId),
+      ]);
 
       // Step 1: Generate storyboard
       const storyboard = await this.storyboardService.generateStoryboard(
@@ -226,8 +233,26 @@ export class VideoPipelineService {
         finalS3Key
       );
 
-      // Create a video entry in Firestore
-      const videoId = `video_${jobId}`;
+      // Step 11: Generate and upload thumbnail
+      const thumbnailPath = path.join(jobTempDir, "thumbnail.jpg");
+      await this.videoProcessingService.generateThumbnail(
+        finalVideoWithMusicPath,
+        thumbnailPath
+      );
+
+      const thumbnailS3Key = `thumbnails/${jobId}/thumbnail.jpg`;
+      await this.s3Service.uploadFile(
+        thumbnailPath,
+        this.s3BucketName,
+        thumbnailS3Key
+      );
+
+      // Step 12: Generate signed URLs
+      const [videoUrl, thumbnailUrl] = await Promise.all([
+        this.s3Service.getSignedUrl(finalS3Key),
+        this.s3Service.getSignedUrl(thumbnailS3Key),
+      ]);
+
       await this.db
         .collection("videos")
         .doc(videoId)
@@ -239,7 +264,8 @@ export class VideoPipelineService {
           userId: "system", // In a real app, this would be the user's ID
           jobId,
           s3Path: `s3://${this.s3BucketName}/${finalS3Key}`,
-          thumbnailUrl: `https://${this.s3BucketName}.s3.amazonaws.com/${scenesWithAudio[0].s3Key}thumbnail.jpg`,
+          videoUrl: videoUrl,
+          thumbnailUrl: thumbnailUrl,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           duration: totalDuration,
@@ -251,7 +277,7 @@ export class VideoPipelineService {
         });
 
       // Update job status to completed
-      const result = {
+      const result: JobResult = {
         videoId,
         localVideoPath: finalVideoWithMusicPath,
         s3VideoPath: `s3://${this.s3BucketName}/${finalS3Key}`,
@@ -300,6 +326,18 @@ export class VideoPipelineService {
         `Warning: Could not clean up temporary directory: ${error.message}`
       );
     }
+  }
+
+  private async updateVideoStatus(
+    videoId: string,
+    status: JobStatus,
+    jobId: string | null
+  ): Promise<void> {
+    await this.db.collection("videos").doc(videoId).update({
+      processingStatus: status,
+      currentJobId: jobId,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   /**

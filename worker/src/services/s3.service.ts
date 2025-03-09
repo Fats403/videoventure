@@ -4,15 +4,22 @@ import {
   ListObjectsV2Command,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import * as fs from "fs";
 
 export class S3Service {
   private s3Client: S3Client;
+  private readonly s3BucketName: string;
+  private readonly urlExpirationSeconds: number;
 
   constructor() {
+    this.s3BucketName = process.env.S3_BUCKET_NAME || "";
     this.s3Client = new S3Client({
       region: process.env.AWS_REGION || "us-east-1",
     });
+    this.urlExpirationSeconds = parseInt(
+      process.env.SIGNED_URL_EXPIRATION_SECONDS || "604800"
+    );
   }
 
   /**
@@ -27,18 +34,17 @@ export class S3Service {
     key: string
   ): Promise<void> {
     try {
-      const fileContent = fs.readFileSync(filePath);
-
-      const params = {
+      const fileStream = fs.createReadStream(filePath);
+      const command = new PutObjectCommand({
         Bucket: bucketName,
         Key: key,
-        Body: fileContent,
-      };
+        Body: fileStream,
+      });
 
-      const command = new PutObjectCommand(params);
       await this.s3Client.send(command);
+      console.log(`✅ Uploaded ${filePath} to s3://${bucketName}/${key}`);
     } catch (error: any) {
-      console.error(`Error uploading to S3: ${error.message}`);
+      console.error(`❌ Error uploading to S3: ${error.message}`);
       throw error;
     }
   }
@@ -125,5 +131,26 @@ export class S3Service {
     const objects = await this.listObjects(bucketName, prefix);
     const file = objects.find((key) => key.endsWith(extension));
     return file || null;
+  }
+
+  async getSignedUrl(s3Key: string): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: this.s3BucketName,
+      Key: s3Key,
+    });
+
+    try {
+      return await getSignedUrl(this.s3Client, command, {
+        expiresIn: this.urlExpirationSeconds,
+      });
+    } catch (error) {
+      console.error(`Error generating signed URL for ${s3Key}:`, error);
+      throw error;
+    }
+  }
+
+  async s3UriToSignedUrl(s3Uri: string): Promise<string> {
+    const s3Key = s3Uri.replace(`s3://${this.s3BucketName}/`, "");
+    return this.getSignedUrl(s3Key);
   }
 }
