@@ -4,13 +4,13 @@ export type VideoVisibility = "PUBLIC" | "PRIVATE";
 
 export interface Job {
   jobId: string; // nanoid()
-  videoId: string; // video this job is for
-  type: JobType; // what kind of processing
+  videoId: string; // nanoid()
+  type: JobType;
   userId: string;
   status: JobStatus;
   error?: string;
   params: {
-    storyIdea?: string; // for CREATE_VIDEO/REGENERATE_VIDEO
+    storyIdea?: string; // for CREATE_VIDEO / REGENERATE_VIDEO
     sceneNumber?: number; // for UPDATE_SCENE
     voiceover?: string;
     voiceId?: string;
@@ -25,7 +25,7 @@ export interface Job {
   };
   createdAt: string;
   updatedAt: string;
-}
+} // TODO: Remove Job Result type, having both types in redundant
 
 export interface SceneData {
   sceneNumber: number;
