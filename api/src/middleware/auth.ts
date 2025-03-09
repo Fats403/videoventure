@@ -1,4 +1,5 @@
 import { createMiddleware } from "hono/factory";
+import { auth } from "firebase-admin";
 
 // Create a properly typed authentication middleware
 export const authenticateUser = createMiddleware<{
@@ -7,22 +8,25 @@ export const authenticateUser = createMiddleware<{
   };
 }>(async (c, next) => {
   try {
-    // Your authentication logic here
-    // For example:
+    // Get the token from the Authorization header
     const token = c.req.header("Authorization")?.replace("Bearer ", "");
 
     if (!token) {
       return c.json({ error: "Authentication required" }, 401);
     }
 
-    // Verify token and get userId
-    const userId = "verified-user-id"; // Replace with actual verification logic
+    // Verify the Firebase ID token
+    const decodedToken = await auth().verifyIdToken(token);
+
+    // Get the user ID from the decoded token
+    const userId = decodedToken.uid;
 
     // Set the userId in the context variables
     c.set("userId", userId);
 
     await next();
   } catch (error) {
+    console.error("Authentication error:", error);
     return c.json({ error: "Authentication failed" }, 401);
   }
 });
