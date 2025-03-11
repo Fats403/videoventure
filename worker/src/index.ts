@@ -3,6 +3,7 @@ import { initializeApp } from "firebase-admin/app";
 import { credential } from "firebase-admin";
 import { Worker } from "bullmq";
 import { VideoPipelineService } from "./services/video-pipeline.service";
+import { Job } from "./types"; // Adjust the path as needed
 
 // Load environment variables
 dotenv.config();
@@ -31,18 +32,21 @@ const worker = new Worker(
     console.log(`Processing job ${job.id}: ${job.name}`);
 
     try {
-      const { jobId, storyIdea, maxScenes, voiceId, videoId, userId } =
-        job.data;
+      // Properly type the job data
+      const jobData = job.data as Job;
+      const { jobId, videoId, userId, params } = jobData;
+      const { inputConcept, maxScenes, voiceId, orientation } = params;
 
       // Process the story and generate the video
-      const result = await videoPipelineService.processStory(
-        storyIdea,
+      const result = await videoPipelineService.processConcept({
+        inputConcept,
         jobId,
         videoId,
         userId,
         maxScenes,
-        voiceId
-      );
+        voiceId,
+        orientation,
+      });
 
       console.log(`✅ Job ${jobId} completed successfully`);
       return result;

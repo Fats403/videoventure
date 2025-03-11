@@ -11,13 +11,15 @@ export class VideoController {
   async createVideo(c: Context): Promise<Response> {
     try {
       const userId = c.var.userId;
-      const { storyIdea, maxScenes, voiceId } = await c.req.json();
+      const { inputConcept, maxScenes, voiceId, orientation } =
+        await c.req.json();
 
       const result = await this.videoService.createVideo(
         userId,
-        storyIdea,
+        inputConcept,
         maxScenes,
-        voiceId
+        voiceId,
+        orientation
       );
 
       return c.json(result, 202);

@@ -153,4 +153,93 @@ export class S3Service {
     const s3Key = s3Uri.replace(`s3://${this.s3BucketName}/`, "");
     return this.getSignedUrl(s3Key);
   }
+
+  /**
+   * Generate S3 paths for a video
+   * @param userId - User ID
+   * @param videoId - Video ID
+   * @param version - Version number of the video
+   * @returns Object containing paths for video assets
+   */
+  getVideoPaths(userId: string, videoId: string, version: number = 1) {
+    return {
+      video: `${userId}/${videoId}/video/final_v${version}.mp4`,
+      thumbnail: `${userId}/${videoId}/video/thumbnail.jpg`,
+      music: `${userId}/${videoId}/audio/music.mp3`,
+    };
+  }
+
+  /**
+   * Generate S3 paths for a specific scene
+   * @param userId - User ID
+   * @param videoId - Video ID
+   * @param sceneNumber - Scene number
+   * @param version - Version number of the scene
+   * @returns Object containing paths for scene assets
+   */
+  getScenePaths(
+    userId: string,
+    videoId: string,
+    sceneNumber: number,
+    version: number = 1
+  ) {
+    return {
+      video: `${userId}/${videoId}/scenes/scene_${sceneNumber}/video_v${version}.mp4`,
+      audio: `${userId}/${videoId}/scenes/scene_${sceneNumber}/audio_v${version}.mp3`,
+    };
+  }
+
+  /**
+   * Generate signed URLs for video assets
+   * @param userId - User ID
+   * @param videoId - Video ID
+   * @param version - Version number of the video
+   * @param expiresIn - Expiration time in seconds
+   * @returns Object containing signed URLs and expiry date
+   */
+  async generateSignedUrls(
+    userId: string,
+    videoId: string,
+    version: number = 1,
+    expiresIn = 3600
+  ) {
+    const paths = this.getVideoPaths(userId, videoId, version);
+
+    const videoUrl = await this.getSignedUrl(paths.video);
+    const thumbnailUrl = await this.getSignedUrl(paths.thumbnail);
+
+    return {
+      videoUrl,
+      thumbnailUrl,
+      expiryDate: new Date(Date.now() + expiresIn * 1000).toISOString(),
+    };
+  }
+
+  /**
+   * Generate signed URLs for scene assets
+   * @param userId - User ID
+   * @param videoId - Video ID
+   * @param sceneNumber - Scene number
+   * @param version - Version number of the scene
+   * @param expiresIn - Expiration time in seconds
+   * @returns Object containing signed URLs for scene assets
+   */
+  async generateSceneSignedUrls(
+    userId: string,
+    videoId: string,
+    sceneNumber: number,
+    version: number = 1,
+    expiresIn = 3600
+  ) {
+    const paths = this.getScenePaths(userId, videoId, sceneNumber, version);
+
+    const videoUrl = await this.getSignedUrl(paths.video);
+    const audioUrl = await this.getSignedUrl(paths.audio);
+
+    return {
+      videoUrl,
+      audioUrl,
+      expiryDate: new Date(Date.now() + expiresIn * 1000).toISOString(),
+    };
+  }
 }

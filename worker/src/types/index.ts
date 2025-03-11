@@ -1,14 +1,14 @@
 export type JobType = "CREATE_VIDEO" | "UPDATE_SCENE" | "REGENERATE_VIDEO";
 export type JobStatus = "QUEUED" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
 export type VideoVisibility = "PUBLIC" | "PRIVATE";
+export type VideoOrientation = "PORTRAIT" | "LANDSCAPE";
 
 export interface SceneData {
   sceneNumber: number;
   description: string;
   voiceover: string;
   duration: number;
-  videoPath: string;
-  audioPath: string;
+  version: number; // Track version of this scene
 }
 
 export interface Job {
@@ -19,79 +19,61 @@ export interface Job {
   status: JobStatus;
   error?: string;
   params: {
-    storyIdea?: string;
-    sceneNumber?: number;
-    voiceover?: string;
-    voiceId?: string;
-    visualStyle?: string;
-    maxScenes?: number;
+    inputConcept: string;
+    maxScenes: number;
+    voiceId: string;
+    orientation: VideoOrientation;
+    sceneNumber?: number; // For UPDATE_SCENE jobs
+    voiceover?: string; // For UPDATE_SCENE jobs
+    visualStyle?: string; // For REGENERATE_VIDEO jobs
   };
-  result?: {
-    videoPath: string;
-    thumbnailPath: string;
-    s3MusicPath: string;
-    scenes: SceneData[];
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface JobResult {
-  videoId: string;
-  status: JobStatus;
-  error?: string;
-  result?: {
-    videoPath: string; // S3 path
-    videoUrl: string; // Signed URL
-    thumbnailPath: string; // S3 path
-    thumbnailUrl: string; // Signed URL
-    s3MusicPath: string; // S3 path
-    scenes: SceneData[];
-    visualStyle: string;
+  progress?: {
+    currentStep: string;
+    completedSteps: number;
+    totalSteps: number;
+    percentComplete: number;
   };
   createdAt: string;
   updatedAt: string;
-}
-
-export interface Scene {
-  id: string;
-  text: string;
-  imagePrompt?: string;
-  imageUrl?: string;
-  audioUrl?: string;
-  duration?: number;
 }
 
 export interface Video {
   videoId: string;
   userId: string;
   title: string;
-  description: string;
+  orientation: VideoOrientation;
   visibility: VideoVisibility;
   duration: number;
   views: number;
   tags: string[];
 
-  // URLs and paths
-  videoUrl: string;
-  thumbnailUrl: string;
-  s3Paths: {
-    video: string;
-    thumbnail: string;
-    music: string;
-  };
-
   // Technical data
-  originalStoryIdea: string;
+  originalConcept: string;
   visualStyle: string;
+  version: number; // Track version of the full video
   scenes: SceneData[];
 
   // Processing status
-  processingStatus: JobStatus;
   currentJobId?: string;
+  processingHistory?: {
+    jobId: string;
+    type: JobType;
+    status: JobStatus;
+    timestamp: string;
+  }[];
 
   // Timestamps
   createdAt: string;
   updatedAt: string;
+}
+
+export interface VideoWithUrls extends Video {
+  videoUrl: string;
+  thumbnailUrl: string;
+  sceneUrls?: {
+    sceneNumber: number;
+    videoUrl: string;
+    audioUrl: string;
+  }[];
   urlExpiryDate: string;
 }

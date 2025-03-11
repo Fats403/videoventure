@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { Queue } from "bullmq";
 import { getFirestore } from "firebase-admin/firestore";
-import { Video, Job, JobResult } from "../types";
+import { Job, JobStatus, JobType, VideoOrientation } from "../types";
 
 export class VideoService {
   private db = getFirestore();
@@ -13,54 +13,24 @@ export class VideoService {
 
   async createVideo(
     userId: string,
-    storyIdea: string,
+    inputConcept: string,
     maxScenes = 5,
-    voiceId = "JBFqnCBsd6RMkjVDRZzb"
-  ): Promise<{ videoId: string; jobId: string; status: string }> {
+    voiceId = "JBFqnCBsd6RMkjVDRZzb",
+    orientation: VideoOrientation = "LANDSCAPE"
+  ): Promise<Job> {
     const videoId = nanoid();
     const jobId = nanoid();
-
-    // Create initial video document
-    const video: Video = {
-      videoId,
-      userId,
-      title: storyIdea,
-      description: `Video created from: ${storyIdea}`,
-      visibility: "PRIVATE",
-      duration: 0,
-      views: 0,
-      tags: storyIdea
-        .split(" ")
-        .filter((word: string) => word.length > 3)
-        .slice(0, 5),
-      videoUrl: "",
-      thumbnailUrl: "",
-      s3Paths: {
-        video: `users/${userId}/videos/${videoId}/final.mp4`,
-        thumbnail: `users/${userId}/videos/${videoId}/thumbnail.jpg`,
-        music: `users/${userId}/videos/${videoId}/music.mp3`,
-      },
-      originalStoryIdea: storyIdea,
-      visualStyle: "",
-      scenes: [],
-      processingStatus: "QUEUED",
-      currentJobId: jobId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      urlExpiryDate: new Date(
-        Date.now() + 7 * 24 * 60 * 60 * 1000
-      ).toISOString(),
-    };
 
     // Create job document
     const job: Job = {
       jobId,
       videoId,
       userId,
-      type: "CREATE_VIDEO",
-      status: "QUEUED",
+      type: "CREATE_VIDEO" as JobType,
+      status: "QUEUED" as JobStatus,
       params: {
-        storyIdea,
+        inputConcept,
+        orientation,
         maxScenes,
         voiceId,
       },
@@ -68,27 +38,22 @@ export class VideoService {
       updatedAt: new Date().toISOString(),
     };
 
-    await Promise.all([
-      this.db.collection("videos").doc(videoId).set(video),
-      this.db.collection("jobs").doc(jobId).set(job),
-    ]);
+    // Only create the job document initially
+    await this.db.collection("jobs").doc(jobId).set(job);
 
-    await this.videoQueue.add(
-      "create-video",
-      { jobId, videoId, userId, storyIdea, maxScenes, voiceId },
-      { jobId }
-    );
+    // Add job to queue
+    await this.videoQueue.add("create-video", job, { jobId });
 
-    return { videoId, jobId, status: "QUEUED" };
+    return job;
   }
 
-  async getJobStatus(jobId: string): Promise<JobResult> {
+  async getJobStatus(jobId: string): Promise<Job> {
     const jobDoc = await this.db.collection("jobs").doc(jobId).get();
 
     if (!jobDoc.exists) {
       throw new Error("Job not found");
     }
 
-    return jobDoc.data() as JobResult;
+    return jobDoc.data() as Job;
   }
 }
