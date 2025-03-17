@@ -17,12 +17,12 @@ export interface Job {
   userId: string;
   type: JobType;
   status: JobStatus;
-  error?: string;
   params: {
-    inputConcept?: string;
-    maxScenes?: number;
-    voiceId?: string;
-    orientation?: VideoOrientation;
+    inputConcept: string;
+    maxScenes: number;
+    voiceId: string;
+    videoModel?: string;
+    providerConfig?: Record<string, any>;
     sceneNumber?: number; // For UPDATE_SCENE jobs
     voiceover?: string; // For UPDATE_SCENE jobs
     visualStyle?: string; // For REGENERATE_VIDEO jobs
@@ -33,6 +33,7 @@ export interface Job {
     totalSteps: number;
     percentComplete: number;
   };
+  error?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,4 +66,15 @@ export interface Video {
   // Timestamps
   createdAt: string;
   updatedAt: string;
+}
+
+export interface VideoWithUrls extends Video {
+  videoUrl: string;
+  thumbnailUrl: string;
+  sceneUrls?: {
+    sceneNumber: number;
+    videoUrl: string;
+    audioUrl: string;
+  }[];
+  urlExpiryDate: string;
 }

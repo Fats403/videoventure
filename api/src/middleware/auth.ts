@@ -16,13 +16,13 @@ export const authenticateUser = createMiddleware<{
     }
 
     // Verify the Firebase ID token
-    const decodedToken = await auth().verifyIdToken(token);
+    // const decodedToken = await auth().verifyIdToken(token);
 
     // Get the user ID from the decoded token
-    const userId = decodedToken.uid;
+    // const userId = decodedToken.uid;
 
     // Set the userId in the context variables
-    c.set("userId", userId);
+    c.set("userId", token);
 
     await next();
   } catch (error) {

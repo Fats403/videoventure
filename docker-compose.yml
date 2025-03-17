@@ -38,6 +38,7 @@ services:
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - BEATOVEN_API_KEY=${BEATOVEN_API_KEY}
+      - FAL_API_KEY=${FAL_API_KEY}
       - WORKER_CONCURRENCY=1
     volumes:
       - ./service-account.json:/app/service-account.json:ro

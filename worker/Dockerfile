@@ -11,8 +11,7 @@ RUN npm install
 COPY src ./src
 RUN npm run build
 
-# Create temporary data directory
+# Create temporary data directory for video storage and processing
 RUN mkdir -p /app/temp
 
-# No volume mounts needed since we're using temporary storage
 CMD ["node", "dist/index.js"]

@@ -46,34 +46,26 @@ export class MusicService {
   }
 
   /**
-   * Generate a detailed music prompt for Beatoven.ai using AI
+   * Generate a simplified music prompt for Beatoven.ai with consistent duration format
    * @param storyIdea - The original story idea/concept
    * @param duration - Duration in seconds
-   * @returns Detailed prompt for Beatoven.ai
+   * @returns Simple prompt for Beatoven.ai with consistent duration format
+   * @throws Error if prompt generation fails
    */
   private async generateMusicPrompt(
     storyIdea: string,
     duration: number
   ): Promise<string> {
     try {
-      // Format duration as minutes:seconds
-      const minutes = Math.floor(duration / 60);
-      const seconds = duration % 60;
-      const durationStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+      const systemPrompt = `Create a very simple, short music prompt for Beatoven.ai based on the story idea.
+      
+Guidelines:
+1. Keep it under 80 characters total
+2. Use simple words and basic music genres (lo-fi, ambient, cinematic, etc.)
+3. Focus on just 1-2 key aspects (mood, genre, or instrument)
+4. Example format: "peaceful lo-fi with piano" or "upbeat electronic music"`;
 
-      const systemPrompt = `You are a music composer creating concise, effective prompts for Beatoven.ai based on story ideas.
-
-Guidelines for Beatoven.ai prompts:
-1. GENRE: Specify one clear genre (ambient, cinematic, lo-fi, electronic, rock, jazz, hip-hop)
-2. INSTRUMENTS: List 2-3 specific instruments or sounds (piano, guitar, synth pads, strings)
-3. MOOD: Define the emotional tone (happy, sad, tense, calm, uplifting, dark, nostalgic)
-4. TEMPO: Specify tempo range (slow: 50-90 BPM, medium: 90-120 BPM, fast: 120-170 BPM)
-5. USE CASE: Mention it's for "video background with narration"
-6. Keep the entire prompt under 75 words
-7. Make it loopable and suitable for voice narration overlay
-8. DURATION: Include the provided duration, and make sure it is always the last thing in the prompt`;
-
-      const userPrompt = `Create a concise music prompt for Beatoven.ai based on this story idea: "${storyIdea}". The music should be ${durationStr} in duration and will be used as background music for a video with voice narration.`;
+      const userPrompt = `Create a simple music prompt for this story: "${storyIdea}"`;
 
       const response = await this.openai.chat.completions.create({
         model: "gpt-4o-mini",
@@ -82,28 +74,27 @@ Guidelines for Beatoven.ai prompts:
           { role: "user", content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 120,
+        max_tokens: 50, // Limiting token count to ensure short responses
       });
 
-      const detailedPrompt = response.choices?.[0].message.content?.trim();
+      let stylePrompt = response.choices?.[0].message.content?.trim();
 
-      if (!detailedPrompt) {
+      if (!stylePrompt) {
         throw new Error("Failed to generate music prompt");
       }
 
-      console.log(`Generated music prompt: "${detailedPrompt}"`);
-      return detailedPrompt;
+      // Remove any duration format that might have been included
+      stylePrompt = stylePrompt.replace(/\d+:\d+\s+/, "");
+      stylePrompt = stylePrompt.replace(/\d+\s+seconds?\s+/, "");
+
+      // Format the final prompt with duration at the beginning
+      const finalPrompt = `${duration} seconds ${stylePrompt}`;
+
+      console.log(`Generated music prompt: "${finalPrompt}"`);
+      return finalPrompt;
     } catch (error: any) {
-      console.warn(
-        `Warning: Could not generate detailed music prompt: ${error.message}`
-      );
-
-      // Fallback to a simpler prompt if AI fails
-      const minutes = Math.floor(duration / 60);
-      const seconds = duration % 60;
-      const durationStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
-
-      return `${durationStr} ambient background music with soft piano and light strings. Calm mood, slow tempo. Loopable.`;
+      console.error(`Error generating music prompt: ${error.message}`);
+      throw new Error(`Failed to generate music prompt: ${error.message}`);
     }
   }
 
@@ -135,36 +126,13 @@ Guidelines for Beatoven.ai prompts:
         `Requesting music from Beatoven.ai with prompt: "${musicPrompt}"`
       );
 
-      // Step 1: Create a new track
-      const createTrackResponse = await axios.post(
-        `${baseUrl}/api/v1/tracks`,
+      // Step 1: Compose the track directly with the prompt
+      const composeResponse = await axios.post(
+        `${baseUrl}/api/v1/tracks/compose`,
         {
           prompt: {
             text: musicPrompt,
           },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${beatovenApiKey}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (
-        !createTrackResponse.data.tracks ||
-        createTrackResponse.data.tracks.length === 0
-      ) {
-        throw new Error("Failed to create track with Beatoven.ai");
-      }
-
-      const trackId = createTrackResponse.data.tracks[0];
-      console.log(`Created Beatoven.ai track with ID: ${trackId}`);
-
-      // Step 2: Compose the track
-      const composeResponse = await axios.post(
-        `${baseUrl}/api/v1/tracks/compose/${trackId}`,
-        {
           format: "mp3",
           looping: true,
         },
@@ -183,7 +151,7 @@ Guidelines for Beatoven.ai prompts:
       const taskId = composeResponse.data.task_id;
       console.log(`Started Beatoven.ai composition task with ID: ${taskId}`);
 
-      // Step 3: Poll for composition status
+      // Step 2: Poll for composition status
       let isComposed = false;
       let trackUrl = null;
       let attempts = 0;
@@ -220,7 +188,7 @@ Guidelines for Beatoven.ai prompts:
         );
       }
 
-      // Step 4: Download the composed track
+      // Step 3: Download the composed track
       console.log(`Downloading Beatoven.ai track from: ${trackUrl}`);
       const downloadResponse = await axios({
         method: "GET",

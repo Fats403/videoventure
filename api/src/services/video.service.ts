@@ -16,7 +16,8 @@ export class VideoService {
     inputConcept: string,
     maxScenes = 5,
     voiceId = "JBFqnCBsd6RMkjVDRZzb",
-    orientation: VideoOrientation = "LANDSCAPE"
+    videoModel = "nova-reel",
+    providerConfig = {}
   ): Promise<Job> {
     const videoId = nanoid();
     const jobId = nanoid();
@@ -30,9 +31,10 @@ export class VideoService {
       status: "QUEUED" as JobStatus,
       params: {
         inputConcept,
-        orientation,
         maxScenes,
         voiceId,
+        videoModel,
+        providerConfig,
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

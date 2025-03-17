@@ -32,7 +32,7 @@ const videoQueue = new Queue("video-processing", {
       delay: 10000,
     },
     removeOnComplete: false,
-    removeOnFail: false,
+    removeOnFail: true,
   },
 });
 

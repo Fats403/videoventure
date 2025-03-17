@@ -17,12 +17,12 @@ export interface Job {
   userId: string;
   type: JobType;
   status: JobStatus;
-  error?: string;
   params: {
     inputConcept: string;
     maxScenes: number;
     voiceId: string;
-    orientation: VideoOrientation;
+    videoModel: string;
+    providerConfig?: Record<string, any>;
     sceneNumber?: number; // For UPDATE_SCENE jobs
     voiceover?: string; // For UPDATE_SCENE jobs
     visualStyle?: string; // For REGENERATE_VIDEO jobs
@@ -33,10 +33,10 @@ export interface Job {
     totalSteps: number;
     percentComplete: number;
   };
+  error?: string;
   createdAt: string;
   updatedAt: string;
 }
-
 export interface Video {
   videoId: string;
   userId: string;
@@ -77,3 +77,31 @@ export interface VideoWithUrls extends Video {
   }[];
   urlExpiryDate: string;
 }
+
+interface VideoProviderConfig {
+  id: string;
+  name: string;
+  supportedOrientations: VideoOrientation[];
+  supportedDurations: number[];
+  supportedFps: number[];
+  supportedResolutions: {
+    width: number;
+    height: number;
+  }[];
+}
+
+const VIDEO_PROVIDERS: Record<string, VideoProviderConfig> = {
+  "nova-reel": {
+    id: "amazon.nova-reel-v1:0",
+    name: "Amazon Nova Reel",
+    supportedOrientations: ["LANDSCAPE"],
+    supportedDurations: [6],
+    supportedFps: [24],
+    supportedResolutions: [
+      {
+        width: 1280,
+        height: 720,
+      },
+    ],
+  },
+};

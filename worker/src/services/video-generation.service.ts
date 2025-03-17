@@ -1,113 +1,87 @@
-import {
-  BedrockRuntimeClient,
-  StartAsyncInvokeCommand,
-  GetAsyncInvokeCommand,
-} from "@aws-sdk/client-bedrock-runtime";
 import { Scene } from "./storyboard.service";
-
-export interface VideoGenerationJob {
-  sceneNumber: number;
-  description: string;
-  voiceover: string;
-  invocationArn: string;
-  s3Uri: string;
-  s3BucketName: string;
-  s3Key: string;
-  jobId: string;
-  status: string;
-  statusResponse?: any;
-  error?: string;
-}
+import {
+  VideoGenerationJob,
+  VideoProvider,
+} from "./video-providers/video-provider.interface";
+import { AmazonProvider } from "./video-providers/amazon.provider";
+import { FalAiProvider } from "./video-providers/fal-ai.provider";
+import { PROVIDER_MODELS } from "./video-providers/provider-config";
 
 export class VideoGenerationService {
-  private bedrockClient: BedrockRuntimeClient;
+  private providers: Map<string, VideoProvider>;
+  private modelToProvider: Map<string, string>;
 
   constructor() {
-    this.bedrockClient = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION || "us-east-1",
+    // Initialize providers
+    this.providers = new Map();
+    this.providers.set("amazon", new AmazonProvider());
+    this.providers.set("fal-ai", new FalAiProvider());
+
+    // Create a mapping from model ID to provider
+    this.modelToProvider = new Map();
+    Object.entries(PROVIDER_MODELS).forEach(([modelId, config]) => {
+      this.modelToProvider.set(modelId, config.provider);
     });
   }
 
   /**
-   * Generate a video for a single scene
+   * Get all available video models with their configurations
+   * @returns Array of model configurations
+   */
+  getAvailableModels() {
+    return Object.entries(PROVIDER_MODELS).map(([id, config]) => ({
+      id,
+      name: config.name,
+      description: config.description,
+      provider: config.provider,
+      capabilities: config.capabilities,
+      defaultConfig: config.defaultConfig,
+    }));
+  }
+
+  /**
+   * Get a specific provider for a model
+   * @param modelId - Model ID
+   * @returns Video provider instance
+   */
+  private getProviderForModel(modelId: string): VideoProvider {
+    const providerId = this.modelToProvider.get(modelId);
+    if (!providerId) {
+      throw new Error(`No provider found for model '${modelId}'`);
+    }
+
+    const provider = this.providers.get(providerId);
+    if (!provider) {
+      throw new Error(`Provider '${providerId}' not found`);
+    }
+
+    return provider;
+  }
+
+  /**
+   * Generate a video for a single scene using the specified model
    * @param scene - Scene object with visual description
    * @param s3BucketName - S3 bucket to store the video
-   * @param seed - Optional seed for video generation
+   * @param modelId - ID of the video model to use
    * @param jobId - Unique ID for this job
+   * @param providerConfig - Provider-specific configuration
    * @returns Information about the generated video
    */
   async generateSceneVideo(
     scene: Scene,
     s3BucketName: string,
-    seed = 0,
-    jobId: string
+    modelId: string,
+    jobId: string,
+    providerConfig?: Record<string, any>
   ): Promise<VideoGenerationJob> {
-    const sceneNumber = scene.scene_number;
-    const description = scene.visual_description;
-
-    console.log(`Generating video for Scene ${sceneNumber}...`);
-
-    try {
-      // Using Amazon Nova Reel model for video generation
-      const modelId = "amazon.nova-reel-v1:0";
-
-      // Create model input object
-      const modelInput = {
-        taskType: "TEXT_VIDEO",
-        textToVideoParams: {
-          text: description,
-        },
-        videoGenerationConfig: {
-          durationSeconds: 6,
-          fps: 24,
-          dimension: "1280x720",
-          seed: seed,
-        },
-      };
-
-      // Generate a path using the jobId and scene number
-      const s3Key = `scenes/${jobId}/scene-${sceneNumber}/`;
-      const s3Uri = `s3://${s3BucketName}/${s3Key}`;
-
-      // Define the request parameters
-      const params = {
-        modelId: modelId,
-        modelInput: modelInput,
-        outputDataConfig: {
-          s3OutputDataConfig: {
-            s3Uri: s3Uri,
-          },
-        },
-      };
-
-      console.log(`Starting video generation for Scene ${sceneNumber}`);
-
-      const command = new StartAsyncInvokeCommand(params);
-      const response = await this.bedrockClient.send(command);
-
-      const invocationArn = response.invocationArn;
-      if (!invocationArn) {
-        throw new Error(`No invocation ARN returned for Scene ${sceneNumber}`);
-      }
-
-      return {
-        sceneNumber: sceneNumber,
-        description: description,
-        voiceover: scene.voiceover,
-        invocationArn: invocationArn,
-        s3Uri: s3Uri,
-        s3BucketName: s3BucketName,
-        s3Key: s3Key,
-        jobId: jobId,
-        status: "InProgress",
-      };
-    } catch (error: any) {
-      console.error(
-        `❌ Error generating video for Scene ${sceneNumber}:`,
-        error.message
-      );
-      throw error;
-    }
+    const provider = this.getProviderForModel(modelId);
+    return provider.generateSceneVideo(
+      scene,
+      s3BucketName,
+      jobId,
+      modelId,
+      providerConfig
+    );
   }
 
   /**
@@ -116,36 +90,65 @@ export class VideoGenerationService {
    * @returns Updated job information
    */
   async checkJobStatus(job: VideoGenerationJob): Promise<VideoGenerationJob> {
-    try {
-      const statusCommand = new GetAsyncInvokeCommand({
-        invocationArn: job.invocationArn,
-      });
+    const provider = this.getProviderForModel(job.modelId);
+    return provider.checkJobStatus(job);
+  }
 
-      const statusResponse = await this.bedrockClient.send(statusCommand);
-      const newStatus = statusResponse.status;
+  /**
+   * Poll for video generation job completion
+   * @param jobs - Array of video generation jobs
+   * @param jobId - Current job ID for progress updates
+   * @param updateProgressCallback - Callback function to update progress
+   * @returns Array of completed jobs
+   */
+  async pollVideoJobs(
+    jobs: VideoGenerationJob[],
+    jobId: string,
+    updateProgressCallback?: (progress: number) => Promise<void>
+  ): Promise<VideoGenerationJob[]> {
+    const completedJobs: VideoGenerationJob[] = [];
+    const pendingJobs = [...jobs];
 
-      // Only log status changes
-      if (job.status !== newStatus) {
-        console.log(`Scene ${job.sceneNumber} - Status: ${newStatus}`);
+    // Poll until all jobs are completed
+    while (pendingJobs.length > 0) {
+      // Wait 10 seconds between polls
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+
+      // Check status of all pending jobs
+      for (let i = pendingJobs.length - 1; i >= 0; i--) {
+        try {
+          const updatedJob = await this.checkJobStatus(pendingJobs[i]);
+
+          // If job is completed, move it to completedJobs
+          if (updatedJob.status === "Completed") {
+            completedJobs.push(updatedJob);
+            pendingJobs.splice(i, 1);
+            console.log(
+              `✅ Scene ${updatedJob.sceneNumber} video generation completed`
+            );
+          } else {
+            // Update the job in the pending array
+            pendingJobs[i] = updatedJob;
+          }
+        } catch (error: any) {
+          console.error(`Error checking job status: ${error.message}`);
+          // Keep the job in pending for now, we'll retry
+        }
       }
 
-      if (newStatus === "Failed") {
-        throw new Error(
-          `Job failed: ${statusResponse.failureMessage || "Unknown reason"}`
-        );
-      }
-
-      return {
-        ...job,
-        status: newStatus ?? "",
-        statusResponse: statusResponse,
-      };
-    } catch (error: any) {
-      console.error(
-        `❌ Error checking status for Scene ${job.sceneNumber}:`,
-        error.message
+      // Log progress
+      const progress = Math.round((completedJobs.length / jobs.length) * 100);
+      console.log(
+        `Video generation progress: ${completedJobs.length}/${jobs.length} scenes completed (${progress}%)`
       );
-      throw error;
+
+      // Call the progress callback if provided
+      if (updateProgressCallback) {
+        await updateProgressCallback(progress);
+      }
     }
+
+    // Sort completed jobs by scene number
+    return completedJobs.sort((a, b) => a.sceneNumber - b.sceneNumber);
   }
 }

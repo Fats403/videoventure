@@ -2,10 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as admin from "firebase-admin";
 import { StoryboardService } from "./storyboard.service";
-import {
-  VideoGenerationService,
-  VideoGenerationJob,
-} from "./video-generation.service";
+import { VideoGenerationService } from "./video-generation.service";
 import { AudioService } from "./audio.service";
 import { MusicService } from "./music.service";
 import {
@@ -13,13 +10,7 @@ import {
   SceneWithAudio,
 } from "./video-processing.service";
 import { S3Service } from "./s3.service";
-import {
-  JobStatus,
-  JobType,
-  SceneData,
-  VideoVisibility,
-  VideoOrientation,
-} from "../types";
+import { JobStatus, JobType, SceneData, VideoVisibility } from "../types";
 
 export class VideoPipelineService {
   private storyboardService: StoryboardService;
@@ -56,7 +47,8 @@ export class VideoPipelineService {
    * @param videoId - Unique ID for this video
    * @param maxScenes - Maximum number of scenes
    * @param voiceId - ElevenLabs voice ID
-   * @param orientation - Video orientation
+   * @param videoModel - Video model
+   * @param providerConfig - Provider-specific configuration
    * @returns Job result with video paths
    */
   async processConcept({
@@ -66,7 +58,8 @@ export class VideoPipelineService {
     userId,
     maxScenes = 5,
     voiceId = "JBFqnCBsd6RMkjVDRZzb",
-    orientation = "LANDSCAPE",
+    videoModel = "nova-reel",
+    providerConfig = {},
   }: {
     inputConcept: string;
     jobId: string;
@@ -74,9 +67,12 @@ export class VideoPipelineService {
     userId: string;
     maxScenes: number;
     voiceId: string;
-    orientation: VideoOrientation;
+    videoModel: string;
+    providerConfig?: Record<string, any>;
   }): Promise<void> {
-    console.log(`Starting video pipeline for concept: "${inputConcept}"`);
+    console.log(
+      `Starting video pipeline for concept: "${inputConcept}" using model: ${videoModel}`
+    );
 
     // Create job-specific directory
     const jobTempDir = path.join(this.tempDir, jobId);
@@ -116,14 +112,27 @@ export class VideoPipelineService {
           this.videoGenerationService.generateSceneVideo(
             scene,
             this.s3BucketName,
-            0,
-            jobId
+            videoModel,
+            jobId,
+            providerConfig
           )
         )
       );
 
       // Step 3: Poll for video generation completion
-      const completedVideoJobs = await this.pollVideoJobs(videoJobs, jobId);
+      const completedVideoJobs =
+        await this.videoGenerationService.pollVideoJobs(
+          videoJobs,
+          jobId,
+          async (progress) => {
+            await this.updateJobStatus(jobId, "IN_PROGRESS", {
+              currentStep: "Generating scene videos",
+              completedSteps: 2,
+              totalSteps: 12,
+              percentComplete: 8 + Math.round(progress * 0.17), // 8-25% range for this step
+            });
+          }
+        );
 
       // Update progress
       await this.updateJobStatus(jobId, "IN_PROGRESS", {
@@ -429,68 +438,6 @@ export class VideoPipelineService {
       currentJobId: jobId,
       updatedAt: new Date().toISOString(),
     });
-  }
-
-  /**
-   * Poll for video generation job completion
-   * @param jobs - Array of video generation jobs
-   * @param jobId - Current job ID for progress updates
-   * @returns Array of completed jobs
-   */
-  private async pollVideoJobs(
-    jobs: VideoGenerationJob[],
-    jobId: string
-  ): Promise<VideoGenerationJob[]> {
-    const completedJobs: VideoGenerationJob[] = [];
-    const pendingJobs = [...jobs];
-
-    // Poll until all jobs are completed
-    while (pendingJobs.length > 0) {
-      // Wait 10 seconds between polls
-      await new Promise((resolve) => setTimeout(resolve, 10000));
-
-      // Check status of all pending jobs
-      for (let i = pendingJobs.length - 1; i >= 0; i--) {
-        try {
-          const updatedJob = await this.videoGenerationService.checkJobStatus(
-            pendingJobs[i]
-          );
-
-          // If job is completed, move it to completedJobs
-          if (updatedJob.status === "Completed") {
-            completedJobs.push(updatedJob);
-            pendingJobs.splice(i, 1);
-            console.log(
-              `✅ Scene ${updatedJob.sceneNumber} video generation completed`
-            );
-          } else {
-            // Update the job in the pending array
-            pendingJobs[i] = updatedJob;
-          }
-        } catch (error: any) {
-          console.error(`Error checking job status: ${error.message}`);
-          // Keep the job in pending for now, we'll retry
-        }
-      }
-
-      // Log progress
-      const progress = Math.round((completedJobs.length / jobs.length) * 100);
-      console.log(
-        `Video generation progress: ${completedJobs.length}/${jobs.length} scenes completed (${progress}%)`
-      );
-
-      // Update job progress in Firestore
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
-        currentStep: "Generating scene videos",
-        completedSteps: 2,
-        totalSteps: 12,
-        percentComplete:
-          8 + Math.round((completedJobs.length / jobs.length) * 17), // 8-25% range for this step
-      });
-    }
-
-    // Sort completed jobs by scene number
-    return completedJobs.sort((a, b) => a.sceneNumber - b.sceneNumber);
   }
 
   /**
