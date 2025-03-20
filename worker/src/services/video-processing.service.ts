@@ -147,7 +147,6 @@ export class VideoProcessingService {
           "-filter_complex [0:a]volume=1[a1];[1:a]volume=0.3,aloop=loop=-1:size=2e+09[a2];[a1][a2]amix=inputs=2:duration=first[aout]", // Mix audio streams, loop music, reduce music volume
           "-map 0:v:0", // Map video from first input
           "-map [aout]", // Map mixed audio
-          "-shortest", // Finish encoding when the shortest input stream ends
         ])
         .output(outputPath)
         .on("error", (err) => {

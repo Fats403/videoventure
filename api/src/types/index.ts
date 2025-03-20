@@ -67,14 +67,3 @@ export interface Video {
   createdAt: string;
   updatedAt: string;
 }
-
-export interface VideoWithUrls extends Video {
-  videoUrl: string;
-  thumbnailUrl: string;
-  sceneUrls?: {
-    sceneNumber: number;
-    videoUrl: string;
-    audioUrl: string;
-  }[];
-  urlExpiryDate: string;
-}
