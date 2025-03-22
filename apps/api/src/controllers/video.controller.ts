@@ -1,5 +1,12 @@
 import { Context } from "hono";
 import { VideoService } from "../services/video.service";
+import { getAuth } from "@hono/clerk-auth";
+import { getValidatedData } from "../utils/zodValidator";
+import { z } from "zod";
+import {
+  CreateVideoSchema,
+  GetVideoSignedUrlsSchema,
+} from "../schemas/video.schema";
 
 export class VideoController {
   private videoService: VideoService;
@@ -10,9 +17,13 @@ export class VideoController {
 
   async createVideo(c: Context): Promise<Response> {
     try {
-      const userId = c.var.userId;
+      const auth = getAuth(c);
+      const userId = auth?.userId || "7XJ6PTIzrhY5YNmkg5xO8OuGXme2";
+
+      // Use the type-safe accessor with explicit generic type
+      const data = getValidatedData<z.infer<typeof CreateVideoSchema>>(c);
       const { inputConcept, maxScenes, voiceId, videoModel, providerConfig } =
-        await c.req.json();
+        data;
 
       const result = await this.videoService.createVideo(
         userId,
@@ -37,14 +48,16 @@ export class VideoController {
    */
   async getVideoSignedUrls(c: Context): Promise<Response> {
     try {
-      const userId = c.var.userId;
-      const version = 1;
-      const { videoId } = await c.req.json();
+      const auth = getAuth(c);
+      const userId = auth?.userId || "7XJ6PTIzrhY5YNmkg5xO8OuGXme2";
+
+      const data =
+        getValidatedData<z.infer<typeof GetVideoSignedUrlsSchema>>(c);
 
       const result = await this.videoService.getVideoSignedUrls(
         userId,
-        videoId,
-        version
+        data.videoId,
+        1
       );
       return c.json(result);
     } catch (error: any) {

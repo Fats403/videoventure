@@ -4,10 +4,10 @@ import { logger } from "hono/logger";
 import { Queue } from "bullmq";
 import { initializeApp } from "firebase-admin/app";
 import { credential } from "firebase-admin";
-import { authenticateUser } from "./middleware/auth";
 import { VideoService } from "./services/video.service";
 import { VideoController } from "./controllers/video.controller";
 import { createVideoRoutes } from "./routes/video.routes";
+import { clerkMiddleware, getAuth } from "@hono/clerk-auth";
 
 // Load environment variables
 const PORT = process.env.PORT || 3000;
@@ -43,15 +43,11 @@ const videoService = new VideoService(videoQueue);
 const videoController = new VideoController(videoService);
 
 // Initialize Hono app
-const app = new Hono<{
-  Variables: {
-    userId: string;
-  };
-}>();
+const app = new Hono();
 
 // Middleware
 app.use("*", logger());
-app.use("*", authenticateUser);
+app.use("*", clerkMiddleware());
 
 // Health check
 app.get("/", (c) => c.json({ status: "ok" }));

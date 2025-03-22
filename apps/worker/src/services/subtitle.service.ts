@@ -52,7 +52,7 @@ export class SubtitleService {
       return customFontPath;
     }
 
-    const defaultFontFile = "concert-one.ttf";
+    const defaultFontFile = "integral-cf.ttf";
 
     // Check in project font directory (multiple possible locations)
     const projectFontPaths = [
@@ -68,6 +68,57 @@ export class SubtitleService {
     }
 
     return defaultFontPath;
+  }
+
+  /**
+   * Ensure a directory exists and verify it exists afterwards
+   */
+  private async ensureDirectoryExistsWithVerification(
+    dirPath: string
+  ): Promise<void> {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true });
+
+      // Verify the directory was created
+      if (!fs.existsSync(dirPath)) {
+        throw new Error(`Failed to create directory: ${dirPath}`);
+      }
+    }
+  }
+
+  /**
+   * Format color input (supporting hex values, named colors, and RGBA formats)
+   */
+  private formatColor(color: string): string {
+    // If it's a hex value, convert it to FFmpeg format
+    if (color.startsWith("#")) {
+      // Remove # and make sure it's 6 characters
+      const hex = color.substring(1).padEnd(6, "0");
+      // Extract rgb components and convert to decimal
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      // Format for FFmpeg (which uses 0xRRGGBB format)
+      return `0x${hex}`;
+    }
+    return color;
+  }
+
+  /**
+   * Properly escape text for FFmpeg drawtext filter
+   * Strictly limits to alphanumerics and basic punctuation (?!.,)
+   */
+  private escapeForFFmpeg(text: string): string {
+    // First, strip all characters except alphanumerics and ?!.,
+    // This ensures NO other characters can appear in the output
+    const strippedText = text.replace(/[^a-zA-Z0-9\s?!.,]/g, "");
+
+    // Only escape the punctuation that needs escaping for FFmpeg filter syntax
+    return strippedText
+      .replace(/'/g, "\\'") // Escape any single quotes (though we filtered them)
+      .replace(/:/g, "\\:") // Escape colons (though we filtered them)
+      .replace(/,/g, "\\,") // Escape commas since we're allowing them
+      .replace(/=/g, "\\="); // Escape equals (though we filtered them)
   }
 
   /**
@@ -95,8 +146,8 @@ export class SubtitleService {
     // Set default styling options
     const style = {
       fontSize: options.fontSize || 72,
-      textColor: options.textColor || "white",
-      outlineColor: options.outlineColor || "black",
+      textColor: this.formatColor(options.textColor || "white"),
+      outlineColor: this.formatColor(options.outlineColor || "black"),
       outlineThickness: options.outlineThickness || "normal",
       fontPath: this.getFontPath(options.customFontPath),
       position: options.position || "middle",
@@ -139,17 +190,32 @@ export class SubtitleService {
       });
     }
 
-    // Process all words at once - no batching
-    console.log(`Processing all ${wordTimestamps.length} words at once`);
-    return this.addSubtitlesSimple(
-      videoPath,
-      wordTimestamps,
-      outputPath,
-      style,
-      yPosition,
-      borderWidth,
-      startOffset
-    );
+    // Process words based on count
+    if (wordTimestamps.length > 30) {
+      console.log(
+        `Using batched processing for ${wordTimestamps.length} words`
+      );
+      return this.addSubtitlesWithBatching(
+        videoPath,
+        wordTimestamps,
+        outputPath,
+        style,
+        yPosition,
+        borderWidth,
+        startOffset
+      );
+    } else {
+      console.log(`Processing all ${wordTimestamps.length} words at once`);
+      return this.addSubtitlesSimple(
+        videoPath,
+        wordTimestamps,
+        outputPath,
+        style,
+        yPosition,
+        borderWidth,
+        startOffset
+      );
+    }
   }
 
   /**
@@ -175,6 +241,9 @@ export class SubtitleService {
     const outputDir = path.dirname(outputPath);
     await this.ensureDirectoryExistsWithVerification(outputDir);
 
+    // Performance measurement
+    const startTime = Date.now();
+
     // Generate filter commands for each word
     const filterCommands = words.map((word) => {
       const adjustedStart =
@@ -182,12 +251,23 @@ export class SubtitleService {
       const adjustedEnd =
         word.end + this.BEGINNING_SILENCE_PADDING + startOffset;
 
-      // Sanitize the word completely to avoid any escaping issues
-      // Remove any characters that might cause issues
-      const safeWord = word.word.replace(/[^a-zA-Z0-9 ]/g, ""); // Keep only alphanumeric characters and spaces
+      // Animation duration - make it shorter for better performance
+      const animDuration = 0.2; // 200ms
+      const popEnd = adjustedStart + animDuration;
 
+      // Better character escaping while preserving special characters
+      const safeWord = this.escapeForFFmpeg(word.word);
+
+      // Simplified expression for bounce effect
+      // Use a single sine function with offset instead of the complex expression
       return (
-        `drawtext=text='${safeWord}':fontcolor=${style.textColor}:fontsize=${style.fontSize}:` +
+        `drawtext=text='${safeWord}':fontcolor=${style.textColor}:` +
+        `fontsize='if(lt(t,${popEnd}),` +
+        // Simpler curve: Start at 70%, grow to 110%, settle at 100%
+        `${style.fontSize * 0.7}+${
+          style.fontSize * 0.4
+        }*sin(PI/2*(t-${adjustedStart})/${animDuration}),` +
+        `${style.fontSize})':` +
         `fontfile=${style.fontPath}:` +
         `x=(w-text_w)/2:y=${yPosition}:` +
         `enable='between(t,${adjustedStart},${adjustedEnd})':` +
@@ -198,24 +278,19 @@ export class SubtitleService {
     // Join all filter commands with comma
     const filterString = filterCommands.join(",");
 
-    // Write the filter to a file instead of passing directly
-    const filterFile = path.join(
-      outputDir,
-      `subtitle-filter-${Date.now()}.txt`
+    console.log(
+      `Created filter with ${words.length} words using optimized bounce animation`
     );
-    fs.writeFileSync(filterFile, filterString);
 
-    console.log(`Created filter file: ${filterFile}`);
-
+    // Run with performance optimizations
     return new Promise((resolve, reject) => {
-      // Use -filter_complex_script instead of inline -vf
       ffmpeg(videoPath)
         .outputOptions([
           "-c:v libx264",
           "-c:a copy",
-          "-filter_complex_script",
-          filterFile,
+          "-preset ultrafast", // Use ultrafast preset for faster processing
         ])
+        .videoFilters(filterString)
         .output(outputPath)
         .on("progress", (progress) => {
           if (progress.percent) {
@@ -224,36 +299,123 @@ export class SubtitleService {
         })
         .on("error", (err) => {
           console.error("FFmpeg error:", err.message);
-
-          // For debugging - try to read the content of the filter file
-          try {
-            const filterContent = fs.readFileSync(filterFile, "utf8");
-            console.log(
-              `Filter file content (first 500 chars): ${filterContent.substring(
-                0,
-                500
-              )}...`
-            );
-          } catch (readErr) {
-            console.error("Error reading filter file:", readErr);
-          }
-
           reject(err);
         })
         .on("end", () => {
-          console.log(`✅ Added subtitles successfully`);
-
-          // Clean up filter file
-          try {
-            fs.unlinkSync(filterFile);
-          } catch (err) {
-            console.warn(`Could not remove filter file: ${err}`);
-          }
-
+          const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
+          console.log(
+            `✅ Added subtitles with bounce effect in ${processingTime}s`
+          );
           resolve(outputPath);
         })
         .run();
     });
+  }
+
+  /**
+   * Process subtitles in batches for better performance with large word sets
+   */
+  private async addSubtitlesWithBatching(
+    videoPath: string,
+    words: WordTimestamp[],
+    outputPath: string,
+    style: {
+      fontSize: number;
+      textColor: string;
+      outlineColor: string;
+      fontPath: string;
+      position: string;
+    },
+    yPosition: string,
+    borderWidth: number,
+    startOffset: number
+  ): Promise<string> {
+    // Smaller batch size for better compatibility
+    const BATCH_SIZE = 15;
+
+    console.log(`Processing ${words.length} words in batches of ${BATCH_SIZE}`);
+
+    // Split words into time-ordered batches
+    const batches: WordTimestamp[][] = [];
+    for (let i = 0; i < words.length; i += BATCH_SIZE) {
+      batches.push(words.slice(i, i + BATCH_SIZE));
+    }
+
+    console.log(`Created ${batches.length} processing batches`);
+
+    // Performance measurement
+    const totalStartTime = Date.now();
+
+    try {
+      // Process each batch sequentially
+      let currentInput = videoPath;
+      let tempFiles: string[] = [];
+
+      for (let i = 0; i < batches.length; i++) {
+        // Create temp file path in the same directory as output
+        const batchOutput = path.join(
+          path.dirname(outputPath),
+          `batch_${i}_${path.basename(outputPath)}`
+        );
+        tempFiles.push(batchOutput);
+
+        console.log(
+          `Processing batch ${i + 1}/${batches.length} (${
+            batches[i].length
+          } words)`
+        );
+
+        // Process this batch
+        await this.addSubtitlesSimple(
+          currentInput,
+          batches[i],
+          batchOutput,
+          style,
+          yPosition,
+          borderWidth,
+          startOffset
+        );
+
+        // Next batch will use the previous output as input
+        currentInput = batchOutput;
+      }
+
+      // Rename the final temp file to the desired output path
+      fs.renameSync(currentInput, outputPath);
+
+      // Clean up temporary files (skip the last one since we renamed it)
+      for (const file of tempFiles.slice(0, -1)) {
+        if (fs.existsSync(file)) {
+          try {
+            fs.unlinkSync(file);
+            console.log(`Removed temp file: ${file}`);
+          } catch (err) {
+            console.warn(`Warning: Could not remove temp file ${file}`, err);
+          }
+        }
+      }
+
+      const totalProcessingTime = (
+        (Date.now() - totalStartTime) /
+        1000
+      ).toFixed(2);
+      console.log(`✅ Completed batch processing in ${totalProcessingTime}s`);
+
+      return outputPath;
+    } catch (error) {
+      console.error("Error in batch processing:", error);
+      // In case of error, try processing all at once as fallback
+      console.log("Attempting fallback to single-batch processing...");
+      return this.addSubtitlesSimple(
+        videoPath,
+        words,
+        outputPath,
+        style,
+        yPosition,
+        borderWidth,
+        startOffset
+      );
+    }
   }
 
   /**
@@ -293,78 +455,5 @@ export class SubtitleService {
 
     // Add subtitles to the combined video
     return this.addSubtitlesToVideo(videoPath, allWords, outputPath, options);
-  }
-
-  /**
-   * Ensure that a directory exists, creating it if necessary
-   */
-  private ensureDirectoryExists(directoryPath: string): void {
-    if (!fs.existsSync(directoryPath)) {
-      fs.mkdirSync(directoryPath, { recursive: true });
-      console.log(`Created directory: ${directoryPath}`);
-    }
-  }
-
-  /**
-   * Ensures a directory exists with verification and retries
-   * @param directoryPath - Path to directory to create
-   * @param maxRetries - Maximum number of retries
-   * @param retryDelay - Milliseconds to wait between retries
-   */
-  private async ensureDirectoryExistsWithVerification(
-    directoryPath: string,
-    maxRetries = 5,
-    retryDelay = 100
-  ): Promise<void> {
-    // First attempt
-    if (!fs.existsSync(directoryPath)) {
-      fs.mkdirSync(directoryPath, { recursive: true });
-    }
-
-    // Verify directory exists
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      if (fs.existsSync(directoryPath)) {
-        // Extra verification - try to write a test file to confirm directory is usable
-        const testFilePath = path.join(
-          directoryPath,
-          `.test-${Date.now()}.tmp`
-        );
-        try {
-          fs.writeFileSync(testFilePath, "test");
-          fs.unlinkSync(testFilePath); // Clean up test file
-          return; // Directory is confirmed working!
-        } catch (error) {
-          console.log(
-            `Directory exists but isn't writable yet. Retrying... (${
-              attempt + 1
-            }/${maxRetries})`
-          );
-        }
-      } else {
-        console.log(
-          `Directory still not found. Retrying creation... (${
-            attempt + 1
-          }/${maxRetries})`
-        );
-        try {
-          fs.mkdirSync(directoryPath, { recursive: true });
-        } catch (err) {
-          console.error(
-            `Error creating directory on attempt ${attempt + 1}:`,
-            err
-          );
-        }
-      }
-
-      // Wait before next retry
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-    }
-
-    // Final check
-    if (!fs.existsSync(directoryPath)) {
-      throw new Error(
-        `Failed to create directory after ${maxRetries} attempts: ${directoryPath}`
-      );
-    }
   }
 }

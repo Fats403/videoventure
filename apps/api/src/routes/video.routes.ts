@@ -1,24 +1,24 @@
 import { Hono } from "hono";
 import { VideoController } from "../controllers/video.controller";
-import { validate } from "../middleware/validate";
 import {
   CreateVideoSchema,
   GetVideoSignedUrlsSchema,
 } from "../schemas/video.schema";
+import { zodValidator } from "../utils/zodValidator";
 
 export const createVideoRoutes = (
-  app: Hono<{ Variables: { userId: string } }>,
+  app: Hono,
   videoController: VideoController
 ) => {
   // Create a new video
-  app.post("/api/videos", validate(CreateVideoSchema, "json"), (c) =>
+  app.post("/api/videos", zodValidator("json", CreateVideoSchema), (c) =>
     videoController.createVideo(c)
   );
 
   // Get signed URLs for a video and its scenes
   app.get(
     "/api/videos/:videoId/signed-urls",
-    validate(GetVideoSignedUrlsSchema, "json"),
+    zodValidator("param", GetVideoSignedUrlsSchema),
     (c) => videoController.getVideoSignedUrls(c)
   );
 

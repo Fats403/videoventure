@@ -280,10 +280,9 @@ export class VideoPipelineService {
           withSubtitlesPath,
           {
             fontSize: 60,
-            textColor: "white",
-            outlineColor: "black",
+            textColor: "#FFD32C",
+            outlineColor: "#000000",
             outlineThickness: "thick",
-            customFontPath: path.join(__dirname, "../../fonts/custom-font.ttf"),
             position: "middle",
           }
         );

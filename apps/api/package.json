@@ -9,11 +9,14 @@
     "dev": "nodemon --exec ts-node src/index.ts"
   },
   "dependencies": {
-    "@video-venture/shared": "*",
+    "@clerk/backend": "^1.25.5",
+    "@hono/clerk-auth": "^2.0.0",
     "@hono/node-server": "^1.2.0",
+    "@hono/zod-validator": "^0.4.3",
+    "@video-venture/shared": "*",
     "bullmq": "^4.12.0",
     "firebase-admin": "^13.2.0",
-    "hono": "^4.0.0",
+    "hono": "^4.7.5",
     "nanoid": "^3.3.6",
     "zod": "^3.24.2"
   },
