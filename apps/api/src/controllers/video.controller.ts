@@ -30,17 +30,29 @@ export class VideoController {
     }
   }
 
-  async getJobStatus(c: Context): Promise<Response> {
+  /**
+   * Get signed URLs for a video and its scenes
+   * @param c - Hono context
+   * @returns Response with signed URLs
+   */
+  async getVideoSignedUrls(c: Context): Promise<Response> {
     try {
-      const jobId = c.req.param("jobId");
-      const job = await this.videoService.getJobStatus(jobId);
-      return c.json(job);
+      const userId = c.var.userId;
+      const version = 1;
+      const { videoId } = await c.req.json();
+
+      const result = await this.videoService.getVideoSignedUrls(
+        userId,
+        videoId,
+        version
+      );
+      return c.json(result);
     } catch (error: any) {
-      if (error.message === "Job not found") {
-        return c.json({ error: "Job not found" }, 404);
+      console.error("Error generating signed URLs:", error);
+      if (error.message?.includes("not found")) {
+        return c.json({ error: error.message }, 404);
       }
-      console.error("Error getting job:", error);
-      return c.json({ error: "Failed to get job status" }, 500);
+      return c.json({ error: "Failed to generate signed URLs" }, 500);
     }
   }
 }

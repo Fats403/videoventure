@@ -1,14 +1,21 @@
 import { nanoid } from "nanoid";
 import { Queue } from "bullmq";
 import { getFirestore } from "firebase-admin/firestore";
-import { Job, JobStatus, JobType } from "@video-venture/shared";
-
+import {
+  Job,
+  JobStatus,
+  JobType,
+  S3Service,
+  Video,
+} from "@video-venture/shared";
 export class VideoService {
   private db = getFirestore();
   private videoQueue: Queue;
+  private s3Service: S3Service;
 
   constructor(videoQueue: Queue) {
     this.videoQueue = videoQueue;
+    this.s3Service = new S3Service();
   }
 
   async createVideo(
@@ -49,13 +56,41 @@ export class VideoService {
     return job;
   }
 
-  async getJobStatus(jobId: string): Promise<Job> {
-    const jobDoc = await this.db.collection("jobs").doc(jobId).get();
+  /**
+   * Get signed URLs for a video and its scenes
+   * @param userId - User ID
+   * @param videoId - Video ID
+   * @param version - Version of the video
+   * @returns Object containing signed URLs for the video and its scenes
+   */
+  async getVideoSignedUrls(
+    userId: string,
+    videoId: string,
+    version: number = 1
+  ) {
+    // Get the video document to check if it exists and is completed
+    const videoDoc = await this.db.collection("videos").doc(videoId).get();
 
-    if (!jobDoc.exists) {
-      throw new Error("Job not found");
+    if (!videoDoc.exists) {
+      throw new Error("Video not found");
     }
 
-    return jobDoc.data() as Job;
+    const videoData = videoDoc.data() as Video;
+
+    if (videoData.userId !== userId) {
+      throw new Error("Unauthorized access to video");
+    }
+
+    // Generate signed URLs for the main video
+    const mainVideoUrls = await this.s3Service.generateSignedUrls(
+      userId,
+      videoId,
+      version
+    );
+
+    return {
+      video: mainVideoUrls,
+      expiryDate: mainVideoUrls.expiryDate,
+    };
   }
 }

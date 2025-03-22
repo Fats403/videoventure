@@ -1,5 +1,4 @@
 import { createMiddleware } from "hono/factory";
-import { auth } from "firebase-admin";
 
 // Create a properly typed authentication middleware
 export const authenticateUser = createMiddleware<{
@@ -15,13 +14,8 @@ export const authenticateUser = createMiddleware<{
       return c.json({ error: "Authentication required" }, 401);
     }
 
-    // Verify the Firebase ID token
-    // const decodedToken = await auth().verifyIdToken(token);
+    // TODO: Add clerk auth here
 
-    // Get the user ID from the decoded token
-    // const userId = decodedToken.uid;
-
-    // Set the userId in the context variables
     c.set("userId", token);
 
     await next();

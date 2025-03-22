@@ -201,7 +201,7 @@ export class S3Service {
     userId: string,
     videoId: string,
     version: number = 1,
-    expiresIn = 3600
+    expiresIn = this.urlExpirationSeconds
   ) {
     const paths = this.getVideoPaths(userId, videoId, version);
 

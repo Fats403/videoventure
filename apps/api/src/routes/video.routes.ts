@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { VideoController } from "../controllers/video.controller";
 import { validate } from "../middleware/validate";
-import { CreateVideoSchema, JobParamSchema } from "../schemas/video.schema";
+import {
+  CreateVideoSchema,
+  GetVideoSignedUrlsSchema,
+} from "../schemas/video.schema";
 
 export const createVideoRoutes = (
   app: Hono<{ Variables: { userId: string } }>,
@@ -12,9 +15,11 @@ export const createVideoRoutes = (
     videoController.createVideo(c)
   );
 
-  // Get job status
-  app.get("/api/jobs/:jobId", validate(JobParamSchema), (c) =>
-    videoController.getJobStatus(c)
+  // Get signed URLs for a video and its scenes
+  app.get(
+    "/api/videos/:videoId/signed-urls",
+    validate(GetVideoSignedUrlsSchema, "json"),
+    (c) => videoController.getVideoSignedUrls(c)
   );
 
   return app;
