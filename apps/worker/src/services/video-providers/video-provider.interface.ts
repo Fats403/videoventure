@@ -1,4 +1,4 @@
-import { Scene } from "../storyboard.service";
+import { Scene } from "@video-venture/shared";
 
 export interface VideoGenerationJob {
   sceneNumber: number;

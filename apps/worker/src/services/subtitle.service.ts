@@ -7,9 +7,6 @@ import { WordTimestamp } from "./audio.service";
  * Clean subtitle service with professional text outline and custom font support
  */
 export class SubtitleService {
-  // Silence padding that's added in the AudioService.processAudio method
-  private BEGINNING_SILENCE_PADDING = 1.0; // seconds
-
   /**
    * Find the appropriate font file path
    * Checks custom path, project fonts directory, and falls back to system font
@@ -52,7 +49,7 @@ export class SubtitleService {
       return customFontPath;
     }
 
-    const defaultFontFile = "integral-cf.ttf";
+    const defaultFontFile = "integral-cf.otf";
 
     // Check in project font directory (multiple possible locations)
     const projectFontPaths = [
@@ -111,14 +108,10 @@ export class SubtitleService {
   private escapeForFFmpeg(text: string): string {
     // First, strip all characters except alphanumerics and ?!.,
     // This ensures NO other characters can appear in the output
-    const strippedText = text.replace(/[^a-zA-Z0-9\s?!.,]/g, "");
+    const strippedText = text.replace(/[^a-zA-Z0-9\s?]/g, "");
 
     // Only escape the punctuation that needs escaping for FFmpeg filter syntax
-    return strippedText
-      .replace(/'/g, "\\'") // Escape any single quotes (though we filtered them)
-      .replace(/:/g, "\\:") // Escape colons (though we filtered them)
-      .replace(/,/g, "\\,") // Escape commas since we're allowing them
-      .replace(/=/g, "\\="); // Escape equals (though we filtered them)
+    return strippedText;
   }
 
   /**
@@ -135,7 +128,7 @@ export class SubtitleService {
       outlineColor?: string;
       outlineThickness?: "normal" | "thick" | "extra-thick";
       customFontPath?: string;
-      position?: "bottom" | "middle" | "top";
+      position?: "top" | "top-center" | "center" | "bottom-center" | "bottom";
     } = {},
     startOffset: number = 0
   ): Promise<string> {
@@ -150,17 +143,21 @@ export class SubtitleService {
       outlineColor: this.formatColor(options.outlineColor || "black"),
       outlineThickness: options.outlineThickness || "normal",
       fontPath: this.getFontPath(options.customFontPath),
-      position: options.position || "middle",
+      position: options.position || "center",
     };
 
     console.log(`Using font: ${style.fontPath}`);
 
     // Build position setting based on chosen position
-    let yPosition = "(h-text_h)/2"; // Default middle
-    if (style.position === "bottom") {
-      yPosition = "h-text_h-100"; // 100 pixels from bottom
-    } else if (style.position === "top") {
+    let yPosition = "(h-text_h)/2"; // Default: center
+    if (style.position === "top") {
       yPosition = "100"; // 100 pixels from top
+    } else if (style.position === "top-center") {
+      yPosition = "h*0.25"; // 25% from the top
+    } else if (style.position === "bottom-center") {
+      yPosition = "h*0.75-text_h"; // 75% from the top (adjusted for text height)
+    } else if (style.position === "bottom") {
+      yPosition = "h-text_h-100"; // 100 pixels from bottom
     }
 
     // Determine outline thickness
@@ -246,10 +243,8 @@ export class SubtitleService {
 
     // Generate filter commands for each word
     const filterCommands = words.map((word) => {
-      const adjustedStart =
-        word.start + this.BEGINNING_SILENCE_PADDING + startOffset;
-      const adjustedEnd =
-        word.end + this.BEGINNING_SILENCE_PADDING + startOffset;
+      const adjustedStart = word.start + startOffset;
+      const adjustedEnd = word.end + startOffset;
 
       // Animation duration - make it shorter for better performance
       const animDuration = 0.2; // 200ms
@@ -434,7 +429,7 @@ export class SubtitleService {
       outlineColor?: string;
       outlineThickness?: "normal" | "thick" | "extra-thick";
       customFontPath?: string;
-      position?: "bottom" | "middle" | "top";
+      position?: "top" | "top-center" | "center" | "bottom-center" | "bottom";
     } = {}
   ): Promise<string> {
     // Flatten all word timestamps with their scene offset

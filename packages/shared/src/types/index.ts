@@ -3,6 +3,19 @@ export type JobStatus = "QUEUED" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
 export type VideoVisibility = "PUBLIC" | "PRIVATE";
 export type VideoOrientation = "PORTRAIT" | "LANDSCAPE";
 
+export interface Scene {
+  scene_number: number;
+  visual_description: string;
+  voiceover: string;
+}
+
+export interface StoryboardResult {
+  scenes: Scene[];
+  visualStyle: string;
+  tags: string[];
+  title: string;
+}
+
 export interface SceneData {
   sceneNumber: number;
   description: string;
@@ -18,14 +31,10 @@ export interface Job {
   type: JobType;
   status: JobStatus;
   params: {
-    inputConcept: string;
-    maxScenes: number;
     voiceId: string;
     videoModel: string;
     providerConfig?: Record<string, any>;
-    sceneNumber?: number; // For UPDATE_SCENE jobs
-    voiceover?: string; // For UPDATE_SCENE jobs
-    visualStyle?: string; // For REGENERATE_VIDEO jobs
+    storyboard: StoryboardResult;
   };
   progress?: {
     currentStep: string;
@@ -37,6 +46,7 @@ export interface Job {
   createdAt: string;
   updatedAt: string;
 }
+
 export interface Video {
   videoId: string;
   userId: string;

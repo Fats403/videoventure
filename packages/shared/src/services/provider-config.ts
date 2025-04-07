@@ -3,9 +3,7 @@ import { z } from "zod";
 // Provider capability interface
 export interface ProviderCapabilities {
   supportedAspectRatios: string[];
-  supportedResolutions: string[];
   supportedDurations: number[];
-  supportedFeatures: string[];
   costPerSecond: number;
   averageProcessingTime: number; // in seconds
 }
@@ -40,14 +38,25 @@ export const FalKlingConfigSchema = z.object({
     .optional(),
 });
 
-// Define Fal.ai LTX schema
-export const FalLtxConfigSchema = z.object({
+// Define Pika V2 schema
+export const PikaV2ConfigSchema = z.object({
+  duration: z.enum(["5"]).optional(),
   negative_prompt: z.string().optional(),
-  resolution: z.enum(["480p", "720p"]).optional(),
-  aspect_ratio: z.enum(["16:9", "9:16"]).optional(),
+  resolution: z.enum(["720p"]).optional(),
+  aspect_ratio: z.enum(["16:9", "9:16", "1:1"]).optional(),
   seed: z.number().optional(),
-  num_inference_steps: z.number().optional(),
-  expand_prompt: z.boolean().optional(),
+});
+
+// Define Pika V2 schema
+export const PixverseV4ConfigSchema = z.object({
+  duration: z.enum(["5", "8"]).optional(),
+  negative_prompt: z.string().optional(),
+  resolution: z.enum(["720p"]).optional(),
+  style: z
+    .enum(["anime", "3d_animation", "clay", "comic", "cyberpunk"])
+    .optional(),
+  aspect_ratio: z.enum(["16:9", "9:16", "1:1"]).optional(),
+  seed: z.number().optional(),
 });
 
 // Define all provider model configurations
@@ -59,28 +68,24 @@ export const PROVIDER_MODELS: Record<string, ProviderModelConfig> = {
     provider: "amazon",
     capabilities: {
       supportedAspectRatios: ["16:9"],
-      supportedResolutions: ["1280x720"],
       supportedDurations: [6],
-      supportedFeatures: ["seed"],
-      costPerSecond: 0.019, // $0.019 per second
-      averageProcessingTime: 120, // 2 minutes
+      costPerSecond: 0.08, // $0.08 per second
+      averageProcessingTime: 300, // 5 minutes
     },
     schema: NovaReelConfigSchema,
     defaultConfig: {
       seed: 0,
     },
   },
-  "fal-kling": {
+  "kling-1.6": {
     id: "fal-ai/kling-video/v1.6/standard/text-to-video",
-    name: "Fal.ai Kling",
-    description: "Fal.ai's Kling text-to-video model",
+    name: "Kling 1.6",
+    description: "Kling 1.6 text-to-video model",
     provider: "fal-ai",
     capabilities: {
       supportedAspectRatios: ["16:9", "9:16", "1:1"],
-      supportedResolutions: ["720p"],
       supportedDurations: [5, 10],
-      supportedFeatures: ["camera_control"],
-      costPerSecond: 0.025, // $0.025 per second
+      costPerSecond: 0.03,
       averageProcessingTime: 90, // 1.5 minutes
     },
     schema: FalKlingConfigSchema,
@@ -89,32 +94,44 @@ export const PROVIDER_MODELS: Record<string, ProviderModelConfig> = {
       aspect_ratio: "16:9",
     },
   },
-  "fal-ltx": {
-    id: "fal-ai/ltx-video/image-to-video",
-    name: "Fal.ai LTX",
-    description: "Fal.ai's LTX text-to-video model",
+  "pika-v2.2": {
+    id: "fal-ai/pika/v2.2/text-to-video",
+    name: "Pika 2.2",
+    description: "Pika V2.2 text-to-video model",
     provider: "fal-ai",
     capabilities: {
-      supportedAspectRatios: ["16:9", "9:16"],
-      supportedResolutions: ["480p", "720p"],
-      supportedDurations: [3], // Fixed duration
-      supportedFeatures: [
-        "negative_prompt",
-        "seed",
-        "num_inference_steps",
-        "expand_prompt",
-      ],
-      costPerSecond: 0.03, // $0.03 per second
-      averageProcessingTime: 60, // 1 minute
+      supportedAspectRatios: ["16:9", "9:16", "1:1"],
+      supportedDurations: [5],
+      costPerSecond: 0.08, // $0.04 per second
+      averageProcessingTime: 90, // 1.5 minutes
     },
-    schema: FalLtxConfigSchema,
+    schema: PikaV2ConfigSchema,
     defaultConfig: {
-      negative_prompt:
-        "worst quality, inconsistent motion, blurry, jittery, distorted",
       resolution: "720p",
+      negative_prompt: "",
+      seed: 0,
+      duration: "5",
       aspect_ratio: "16:9",
-      num_inference_steps: 40,
-      expand_prompt: true,
+    },
+  },
+  "pixverse-v4": {
+    id: "fal-ai/pixverse/v4/text-to-video",
+    name: "Pixverse V4",
+    description: "Pixverse V4 text-to-video model",
+    provider: "fal-ai",
+    capabilities: {
+      supportedAspectRatios: ["16:9", "9:16", "1:1"],
+      supportedDurations: [5, 8],
+      costPerSecond: 0.04, // $0.04 per second
+      averageProcessingTime: 90, // 1.5 minutes
+    },
+    schema: PixverseV4ConfigSchema,
+    defaultConfig: {
+      resolution: "720p",
+      negative_prompt: "",
+      seed: 0,
+      duration: "5",
+      aspect_ratio: "16:9",
     },
   },
 };

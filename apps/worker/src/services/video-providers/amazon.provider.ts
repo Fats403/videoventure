@@ -3,12 +3,12 @@ import {
   StartAsyncInvokeCommand,
   GetAsyncInvokeCommand,
 } from "@aws-sdk/client-bedrock-runtime";
-import { Scene } from "../storyboard.service";
 import { VideoGenerationJob, VideoProvider } from "./video-provider.interface";
 import {
   getProviderModelConfig,
   validateProviderConfig,
   PROVIDER_MODELS,
+  Scene,
 } from "@video-venture/shared";
 
 export class AmazonProvider implements VideoProvider {
@@ -63,7 +63,7 @@ export class AmazonProvider implements VideoProvider {
         videoGenerationConfig: {
           durationSeconds: modelConfig.capabilities.supportedDurations[0],
           fps: 24,
-          dimension: modelConfig.capabilities.supportedResolutions[0],
+          dimension: "1280x720",
           seed: config.seed,
         },
       };

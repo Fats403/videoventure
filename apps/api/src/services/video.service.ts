@@ -7,24 +7,47 @@ import {
   JobType,
   S3Service,
   Video,
+  StoryboardResult,
 } from "@video-venture/shared";
+import { StoryboardService } from "./storyboard.service";
+
 export class VideoService {
   private db = getFirestore();
   private videoQueue: Queue;
   private s3Service: S3Service;
+  private storyboardService: StoryboardService;
 
   constructor(videoQueue: Queue) {
     this.videoQueue = videoQueue;
     this.s3Service = new S3Service();
+    this.storyboardService = new StoryboardService();
+  }
+
+  async createStoryboard(
+    inputConcept: string,
+    maxScenes = 5
+  ): Promise<StoryboardResult> {
+    console.log(`Generating storyboard for concept: "${inputConcept}"`);
+
+    try {
+      const storyboard = await this.storyboardService.generateStoryboard(
+        inputConcept,
+        maxScenes
+      );
+
+      return storyboard;
+    } catch (error) {
+      console.error("Error generating storyboard:", error);
+      throw error;
+    }
   }
 
   async createVideo(
     userId: string,
-    inputConcept: string,
-    maxScenes = 5,
     voiceId = "JBFqnCBsd6RMkjVDRZzb",
     videoModel = "nova-reel",
-    providerConfig = {}
+    providerConfig = {},
+    storyboard: StoryboardResult
   ): Promise<Job> {
     const videoId = nanoid();
     const jobId = nanoid();
@@ -37,11 +60,10 @@ export class VideoService {
       type: "CREATE_VIDEO" as JobType,
       status: "QUEUED" as JobStatus,
       params: {
-        inputConcept,
-        maxScenes,
         voiceId,
         videoModel,
         providerConfig,
+        storyboard,
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

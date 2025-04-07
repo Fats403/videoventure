@@ -1,11 +1,10 @@
-import { Scene } from "./storyboard.service";
 import {
   VideoGenerationJob,
   VideoProvider,
 } from "./video-providers/video-provider.interface";
 import { AmazonProvider } from "./video-providers/amazon.provider";
 import { FalAiProvider } from "./video-providers/fal-ai.provider";
-import { PROVIDER_MODELS } from "@video-venture/shared";
+import { PROVIDER_MODELS, Scene } from "@video-venture/shared";
 
 export class VideoGenerationService {
   private providers: Map<string, VideoProvider>;

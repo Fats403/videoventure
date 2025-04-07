@@ -7,10 +7,10 @@ import { credential } from "firebase-admin";
 import { VideoService } from "./services/video.service";
 import { VideoController } from "./controllers/video.controller";
 import { createVideoRoutes } from "./routes/video.routes";
-import { clerkMiddleware, getAuth } from "@hono/clerk-auth";
+import { clerkMiddleware } from "@hono/clerk-auth";
 
 // Load environment variables
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 6969;
 const REDIS_HOST = process.env.REDIS_HOST || "localhost";
 const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379");
 

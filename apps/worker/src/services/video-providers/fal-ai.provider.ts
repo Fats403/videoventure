@@ -1,5 +1,4 @@
 import { fal } from "@fal-ai/client";
-import { Scene } from "../storyboard.service";
 import { VideoGenerationJob, VideoProvider } from "./video-provider.interface";
 import * as fs from "fs";
 import * as path from "path";
@@ -8,6 +7,7 @@ import {
   validateProviderConfig,
   PROVIDER_MODELS,
   S3Service,
+  Scene,
 } from "@video-venture/shared";
 
 export class FalAiProvider implements VideoProvider {

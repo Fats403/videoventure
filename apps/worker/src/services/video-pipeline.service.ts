@@ -1,7 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as admin from "firebase-admin";
-import { StoryboardService } from "./storyboard.service";
 import { VideoGenerationService } from "./video-generation.service";
 import { AudioService } from "./audio.service";
 import { MusicService } from "./music.service";
@@ -14,12 +13,12 @@ import {
   JobType,
   SceneData,
   VideoVisibility,
+  StoryboardResult,
   S3Service,
 } from "@video-venture/shared";
 import { SubtitleService } from "./subtitle.service";
 
 export class VideoPipelineService {
-  private storyboardService: StoryboardService;
   private videoGenerationService: VideoGenerationService;
   private audioService: AudioService;
   private musicService: MusicService;
@@ -31,16 +30,15 @@ export class VideoPipelineService {
   private subtitleService: SubtitleService;
 
   constructor() {
-    this.storyboardService = new StoryboardService();
     this.videoGenerationService = new VideoGenerationService();
     this.audioService = new AudioService();
     this.musicService = new MusicService();
     this.videoProcessingService = new VideoProcessingService();
     this.s3Service = new S3Service();
+    this.subtitleService = new SubtitleService();
     this.db = admin.firestore();
     this.s3BucketName = process.env.S3_BUCKET_NAME || "";
     this.tempDir = path.join(process.cwd(), "temp");
-    this.subtitleService = new SubtitleService();
 
     // Ensure temp directory exists
     if (!fs.existsSync(this.tempDir)) {
@@ -50,37 +48,32 @@ export class VideoPipelineService {
 
   /**
    * Process a concept into a video
-   * @param inputConcept - The concept to turn into a video
    * @param jobId - Unique ID for this job
    * @param videoId - Unique ID for this video
-   * @param maxScenes - Maximum number of scenes
    * @param voiceId - ElevenLabs voice ID
    * @param videoModel - Video model
    * @param providerConfig - Provider-specific configuration
+   * @param storyboard - User provided storyboard
    * @returns Job result with video paths
    */
   async processConcept({
-    inputConcept,
     jobId,
     videoId,
     userId,
-    maxScenes = 5,
+    storyboard,
     voiceId = "JBFqnCBsd6RMkjVDRZzb",
     videoModel = "nova-reel",
     providerConfig = {},
   }: {
-    inputConcept: string;
     jobId: string;
     videoId: string;
     userId: string;
-    maxScenes: number;
     voiceId: string;
     videoModel: string;
     providerConfig?: Record<string, any>;
+    storyboard: StoryboardResult;
   }): Promise<void> {
-    console.log(
-      `Starting video pipeline for concept: "${inputConcept}" using model: ${videoModel}`
-    );
+    console.log(`Starting video pipeline for using model: ${videoModel}`);
 
     // Create job-specific directory
     const jobTempDir = path.join(this.tempDir, jobId);
@@ -89,23 +82,6 @@ export class VideoPipelineService {
     }
 
     try {
-      // Update job status in Firestore
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
-        currentStep: "Generating storyboard",
-        completedSteps: 0,
-        totalSteps: 12,
-        percentComplete: 0,
-      });
-
-      // Step 1: Generate storyboard
-      const storyboard = await this.storyboardService.generateStoryboard(
-        inputConcept,
-        maxScenes
-      );
-      console.log(
-        `Generated storyboard with ${storyboard.scenes.length} scenes`
-      );
-
       // Update progress
       await this.updateJobStatus(jobId, "IN_PROGRESS", {
         currentStep: "Generating scene videos",
@@ -279,11 +255,12 @@ export class VideoPipelineService {
           wordTimestamps,
           withSubtitlesPath,
           {
-            fontSize: 60,
+            fontSize: 54,
             textColor: "#FFD32C",
             outlineColor: "#000000",
             outlineThickness: "thick",
-            position: "middle",
+            customFontPath: path.join(__dirname, "../fonts/integral-cf.otf"),
+            position: "bottom-center",
           }
         );
 
@@ -312,7 +289,7 @@ export class VideoPipelineService {
         0
       );
       const musicPath = await this.musicService.getBackgroundMusic(
-        inputConcept,
+        "Concept...", // TODO: update this
         jobId,
         this.tempDir,
         totalDuration
@@ -374,7 +351,9 @@ export class VideoPipelineService {
       const thumbnailPath = path.join(jobTempDir, "thumbnail.jpg");
       await this.videoProcessingService.generateThumbnail(
         finalVideoWithMusicPath,
-        thumbnailPath
+        thumbnailPath,
+        1,
+        providerConfig?.aspect_ratio || "16:9"
       );
 
       await this.s3Service.uploadFile(
@@ -399,7 +378,6 @@ export class VideoPipelineService {
           videoId,
           userId,
           currentJobId: jobId,
-          originalConcept: inputConcept,
           visualStyle: storyboard.visualStyle,
           title: storyboard.title,
           tags: storyboard.tags,
@@ -462,18 +440,6 @@ export class VideoPipelineService {
         `Warning: Could not clean up temporary directory: ${error.message}`
       );
     }
-  }
-
-  private async updateVideoStatus(
-    videoId: string,
-    status: JobStatus,
-    jobId: string | null
-  ): Promise<void> {
-    await this.db.collection("videos").doc(videoId).update({
-      processingStatus: status,
-      currentJobId: jobId,
-      updatedAt: new Date().toISOString(),
-    });
   }
 
   /**

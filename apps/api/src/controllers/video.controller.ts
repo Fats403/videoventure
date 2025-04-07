@@ -6,6 +6,7 @@ import { z } from "zod";
 import {
   CreateVideoSchema,
   GetVideoSignedUrlsSchema,
+  CreateStoryboardSchema,
 } from "../schemas/video.schema";
 
 export class VideoController {
@@ -15,23 +16,37 @@ export class VideoController {
     this.videoService = videoService;
   }
 
+  async createStoryboard(c: Context): Promise<Response> {
+    try {
+      const data = getValidatedData<z.infer<typeof CreateStoryboardSchema>>(c);
+      const { inputConcept, maxScenes } = data;
+
+      const storyboard = await this.videoService.createStoryboard(
+        inputConcept,
+        maxScenes ? Number(maxScenes) : 5
+      );
+
+      return c.json(storyboard);
+    } catch (error) {
+      console.error("Error creating storyboard:", error);
+      return c.json({ error: "Failed to create storyboard" }, 500);
+    }
+  }
+
   async createVideo(c: Context): Promise<Response> {
     try {
       const auth = getAuth(c);
       const userId = auth?.userId || "7XJ6PTIzrhY5YNmkg5xO8OuGXme2";
 
-      // Use the type-safe accessor with explicit generic type
       const data = getValidatedData<z.infer<typeof CreateVideoSchema>>(c);
-      const { inputConcept, maxScenes, voiceId, videoModel, providerConfig } =
-        data;
+      const { voiceId, videoModel, providerConfig, storyboard } = data;
 
       const result = await this.videoService.createVideo(
         userId,
-        inputConcept,
-        maxScenes,
         voiceId,
         videoModel,
-        providerConfig
+        providerConfig,
+        storyboard
       );
 
       return c.json(result, 202);

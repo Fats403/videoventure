@@ -12,10 +12,11 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     ports:
-      - "3000:3000"
+      - "6969:6969"
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
       - AWS_REGION=${AWS_REGION}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}

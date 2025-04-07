@@ -39,6 +39,6 @@ COPY --from=builder /app/packages/shared/package.json ./node_modules/@video-vent
 # Install production dependencies
 RUN npm install --production
 
-EXPOSE 3000
+EXPOSE 6969
 
 CMD ["node", "dist/index.js"]

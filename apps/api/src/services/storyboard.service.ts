@@ -1,5 +1,6 @@
 import { OpenAI } from "openai";
 import { z } from "zod";
+import { Scene, StoryboardResult } from "../types/storyboard.types";
 
 // Define Zod schemas for validation
 const SceneSchema = z.object({
@@ -33,19 +34,6 @@ const StoryboardResponseSchema = z.object({
     ),
 });
 
-export interface Scene {
-  scene_number: number;
-  visual_description: string;
-  voiceover: string;
-}
-
-export interface StoryboardResult {
-  scenes: Scene[];
-  visualStyle: string;
-  tags: string[];
-  title: string;
-}
-
 export class StoryboardService {
   private openai: OpenAI;
 
@@ -59,7 +47,7 @@ export class StoryboardService {
    * Generate a storyboard from an input concept using OpenAI with Zod validation
    * @param inputConcept - The overall concept for the video
    * @param maxScenes - Maximum number of scenes to generate (default: 5)
-   * @param includeHook - Whether to make the first scene a hook (default: false)
+   * @param includeHook - Whether to make the first scene a hook (default: true)
    * @returns Object containing scenes array, visual style, and tags
    */
   async generateStoryboard(
@@ -109,12 +97,11 @@ IMPORTANT TIPS FOR EFFECTIVE VIDEO GENERATION:
 - Use positive descriptions rather than negations
 - Specify lighting, color palette, and atmosphere
 - Keep descriptions under 512 characters
-- The concept could be for any type of video: narrative story, advertisement, educational content, etc.
 
-YOUR RESPONSE MUST FOLLOW THIS EXACT JSON STRUCTURE:
+FORMAT YOUR RESPONSE AS A JSON OBJECT:
 {
-  "title": "Catchy title for the video",
-  "visual_style": "Description of the consistent visual style for all scenes",
+  "title": "Engaging Video Title",
+  "visual_style": "Detailed description of the visual style for the entire video",
   "tags": ["tag1", "tag2", "tag3"],
   "scenes": [
     {

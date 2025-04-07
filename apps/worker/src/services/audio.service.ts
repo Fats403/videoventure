@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { ElevenLabsClient } from "elevenlabs";
 import ffmpeg from "fluent-ffmpeg";
-import { Scene } from "./storyboard.service";
+import { Scene } from "@video-venture/shared";
 
 // Define interface for word-level timestamps
 export interface WordTimestamp {
@@ -318,8 +318,6 @@ export class AudioService {
       ffmpeg()
         .input(inputPath)
         .audioFilters([
-          // Add 1 second delay at the beginning
-          "adelay=1000|1000",
           // Add 1 second of silence at the end
           "apad=pad_dur=1.0",
         ])

@@ -37,33 +37,51 @@ export class VideoProcessingService {
       this.getVideoDuration(audioPath),
     ]);
 
-    // If audio is longer than video, we need to slow down the video
-    let slowdownFactor = 1;
-    if (audioDuration > videoDuration) {
-      slowdownFactor = audioDuration / videoDuration;
+    // Determine if we need to adjust video timing
+    const isAudioLonger = audioDuration > videoDuration;
+    const isAudioShorter = audioDuration < videoDuration;
+
+    // Log appropriate message
+    if (isAudioLonger) {
+      const slowdownFactor = audioDuration / videoDuration;
       console.log(
         `Extending video to match audio duration (factor: ${slowdownFactor.toFixed(
           2
         )})`
       );
+    } else if (isAudioShorter) {
+      console.log(
+        `Audio (${audioDuration.toFixed(
+          2
+        )}s) is shorter than video (${videoDuration.toFixed(
+          2
+        )}s), trimming video to match`
+      );
     }
 
-    return new Promise((resolve, reject) => {
-      const ffmpegCommand = ffmpeg();
+    // Create complex filter and output options
+    const slowdownFactor = isAudioLonger ? audioDuration / videoDuration : 1;
 
-      ffmpegCommand
+    // Build the filter chain
+    const filters = [`[0:v]setpts=${slowdownFactor}*PTS[slowv]`];
+    if (isAudioShorter) {
+      filters.push(`[slowv]trim=0:${audioDuration}[trimmed]`);
+    }
+
+    // Determine which video stream to map
+    const videoMapping = isAudioShorter ? "-map [trimmed]" : "-map [slowv]";
+
+    return new Promise((resolve, reject) => {
+      ffmpeg()
         .input(videoPath)
         .input(audioPath)
-        .complexFilter([
-          // Slow down the video to match audio duration using setpts filter
-          `[0:v]setpts=${slowdownFactor}*PTS[slowv]`,
-        ])
+        .complexFilter(filters)
         .outputOptions([
-          "-map [slowv]", // Use the slowed down video
+          videoMapping,
           "-map 1:a", // Use audio from second input
-          "-r 24", // Explicitly set output frame rate to 24fps
-          "-c:v libx264", // Use H.264 codec
-          "-preset medium", // Encoding preset
+          "-r 24", // 24fps output
+          "-c:v libx264", // H.264 video codec
+          "-preset medium", // Encoding speed/quality balance
           "-crf 23", // Quality level
           "-pix_fmt yuv420p", // Pixel format for compatibility
         ])
@@ -73,9 +91,7 @@ export class VideoProcessingService {
             console.log(`Processing: ${Math.floor(progress.percent)}%`);
           }
         })
-        .on("error", (err) => {
-          reject(err);
-        })
+        .on("error", (err) => reject(err))
         .on("end", () => {
           console.log(`✅ Added audio to video`);
           resolve(outputPath);
@@ -220,15 +236,21 @@ export class VideoProcessingService {
   async generateThumbnail(
     videoPath: string,
     outputPath: string,
-    timeInSeconds = 1
+    timeInSeconds = 1,
+    aspectRatio: "16:9" | "9:16" | "1:1" = "16:9"
   ): Promise<string> {
+    const sizes = {
+      "16:9": "1280x720",
+      "9:16": "1280x720",
+      "1:1": "1280x1280",
+    };
     return new Promise((resolve, reject) => {
       ffmpeg(videoPath)
         .screenshots({
           timestamps: [timeInSeconds],
           filename: path.basename(outputPath),
           folder: path.dirname(outputPath),
-          size: "1280x720", // 720p thumbnail
+          size: sizes[aspectRatio],
         })
         .on("end", () => {
           console.log("✅ Thumbnail generated successfully");
