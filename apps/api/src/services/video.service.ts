@@ -23,16 +23,12 @@ export class VideoService {
     this.storyboardService = new StoryboardService();
   }
 
-  async createStoryboard(
-    inputConcept: string,
-    maxScenes = 5
-  ): Promise<StoryboardResult> {
+  async createStoryboard(inputConcept: string): Promise<StoryboardResult> {
     console.log(`Generating storyboard for concept: "${inputConcept}"`);
 
     try {
       const storyboard = await this.storyboardService.generateStoryboard(
-        inputConcept,
-        maxScenes
+        inputConcept
       );
 
       return storyboard;
@@ -46,8 +42,7 @@ export class VideoService {
     userId: string,
     voiceId = "JBFqnCBsd6RMkjVDRZzb",
     videoModel = "nova-reel",
-    providerConfig = {},
-    storyboard: StoryboardResult
+    providerConfig = {}
   ): Promise<Job> {
     const videoId = nanoid();
     const jobId = nanoid();
@@ -63,7 +58,6 @@ export class VideoService {
         voiceId,
         videoModel,
         providerConfig,
-        storyboard,
       },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

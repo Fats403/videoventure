@@ -31,7 +31,6 @@ export const StoryboardSchema = z.object({
 
 export const CreateStoryboardSchema = z.object({
   inputConcept: z.string().min(10).max(500),
-  maxScenes: z.number().int().min(1).max(10).optional(),
 });
 
 export const CreateVideoSchema = z.object({

@@ -26,7 +26,7 @@ const videoQueue = new Queue("video-processing", {
     port: REDIS_PORT,
   },
   defaultJobOptions: {
-    attempts: 3,
+    attempts: 1,
     backoff: {
       type: "exponential",
       delay: 10000,

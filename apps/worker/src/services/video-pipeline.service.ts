@@ -60,7 +60,6 @@ export class VideoPipelineService {
     jobId,
     videoId,
     userId,
-    storyboard,
     voiceId = "JBFqnCBsd6RMkjVDRZzb",
     videoModel = "nova-reel",
     providerConfig = {},
@@ -71,7 +70,6 @@ export class VideoPipelineService {
     voiceId: string;
     videoModel: string;
     providerConfig?: Record<string, any>;
-    storyboard: StoryboardResult;
   }): Promise<void> {
     console.log(`Starting video pipeline for using model: ${videoModel}`);
 
@@ -80,6 +78,9 @@ export class VideoPipelineService {
     if (!fs.existsSync(jobTempDir)) {
       fs.mkdirSync(jobTempDir, { recursive: true });
     }
+
+    const video = await this.db.collection("videos").doc(videoId).get();
+    const storyboard = video.data()?.storyboard as StoryboardResult;
 
     try {
       // Update progress
@@ -153,7 +154,7 @@ export class VideoPipelineService {
       for (let i = 0; i < completedVideoJobs.length; i++) {
         const job = completedVideoJobs[i];
         const scene = storyboard.scenes[i];
-        const sceneNumber = scene.scene_number;
+        const sceneNumber = scene.sceneNumber;
 
         // Create scene directory
         const sceneDir = path.join(jobTempDir, `scene-${sceneNumber}`);
@@ -209,7 +210,7 @@ export class VideoPipelineService {
         // Add to scene data for the video document
         sceneData.push({
           sceneNumber,
-          description: scene.visual_description,
+          description: scene.description,
           voiceover: scene.voiceover,
           duration: audioDuration,
           version: 1,
@@ -244,7 +245,6 @@ export class VideoPipelineService {
           withAudioPath
         );
 
-        // Add subtitles directly to video (using clean subtitle service with direct text overlay)
         const withSubtitlesPath = path.join(
           jobTempDir,
           `scene-${sceneNumber}-combined.mp4`
@@ -374,15 +374,11 @@ export class VideoPipelineService {
       await this.db
         .collection("videos")
         .doc(videoId)
-        .set({
+        .update({
           videoId,
           userId,
           currentJobId: jobId,
-          visualStyle: storyboard.visualStyle,
-          title: storyboard.title,
-          tags: storyboard.tags,
           duration: totalDuration,
-          scenes: sceneData,
           visibility: "PRIVATE" as VideoVisibility,
           processingStatus: "COMPLETED" as JobStatus,
           processingHistory: [

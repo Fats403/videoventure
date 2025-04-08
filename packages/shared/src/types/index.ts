@@ -4,14 +4,14 @@ export type VideoVisibility = "PUBLIC" | "PRIVATE";
 export type VideoOrientation = "PORTRAIT" | "LANDSCAPE";
 
 export interface Scene {
-  scene_number: number;
-  visual_description: string;
+  sceneNumber: number;
+  description: string;
   voiceover: string;
 }
 
 export interface StoryboardResult {
   scenes: Scene[];
-  visualStyle: string;
+  musicDescription: string;
   tags: string[];
   title: string;
 }
@@ -34,7 +34,6 @@ export interface Job {
     voiceId: string;
     videoModel: string;
     providerConfig?: Record<string, any>;
-    storyboard: StoryboardResult;
   };
   progress?: {
     currentStep: string;

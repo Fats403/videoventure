@@ -18,12 +18,16 @@ export class VideoController {
 
   async createStoryboard(c: Context): Promise<Response> {
     try {
-      const data = getValidatedData<z.infer<typeof CreateStoryboardSchema>>(c);
-      const { inputConcept, maxScenes } = data;
+      const auth = getAuth(c);
+      const userId = auth?.userId;
 
+      if (!userId) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
+
+      const data = getValidatedData<z.infer<typeof CreateStoryboardSchema>>(c);
       const storyboard = await this.videoService.createStoryboard(
-        inputConcept,
-        maxScenes ? Number(maxScenes) : 5
+        data.inputConcept
       );
 
       return c.json(storyboard);
@@ -36,17 +40,20 @@ export class VideoController {
   async createVideo(c: Context): Promise<Response> {
     try {
       const auth = getAuth(c);
-      const userId = auth?.userId || "7XJ6PTIzrhY5YNmkg5xO8OuGXme2";
+      const userId = auth?.userId;
+
+      if (!userId) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
 
       const data = getValidatedData<z.infer<typeof CreateVideoSchema>>(c);
-      const { voiceId, videoModel, providerConfig, storyboard } = data;
+      const { voiceId, videoModel, providerConfig } = data;
 
       const result = await this.videoService.createVideo(
         userId,
         voiceId,
         videoModel,
-        providerConfig,
-        storyboard
+        providerConfig
       );
 
       return c.json(result, 202);
@@ -64,7 +71,11 @@ export class VideoController {
   async getVideoSignedUrls(c: Context): Promise<Response> {
     try {
       const auth = getAuth(c);
-      const userId = auth?.userId || "7XJ6PTIzrhY5YNmkg5xO8OuGXme2";
+      const userId = auth?.userId;
+
+      if (!userId) {
+        return c.json({ error: "Unauthorized" }, 401);
+      }
 
       const data =
         getValidatedData<z.infer<typeof GetVideoSignedUrlsSchema>>(c);
@@ -74,6 +85,7 @@ export class VideoController {
         data.videoId,
         1
       );
+
       return c.json(result);
     } catch (error: any) {
       console.error("Error generating signed URLs:", error);

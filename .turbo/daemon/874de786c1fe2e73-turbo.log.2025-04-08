@@ -1,0 +1,55 @@
+2025-04-08T05:15:26.061061Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/.turbo-cookie")}
+2025-04-08T05:15:26.061098Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:15:26.160173Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/1.cookie")}
+2025-04-08T05:15:26.160215Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:15:26.360821Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/2.cookie")}
+2025-04-08T05:15:26.360848Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:15:31.860560Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/3.cookie")}
+2025-04-08T05:15:31.860576Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:16:00.160416Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/worker/src/services/audio.service.ts")}
+2025-04-08T05:16:00.160448Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/worker"), path: AnchoredSystemPathBuf("apps/worker") }}))
+2025-04-08T05:17:34.359878Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/api/src/services/storyboard.service.ts")}
+2025-04-08T05:17:34.359897Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/api"), path: AnchoredSystemPathBuf("apps/api") }}))
+2025-04-08T05:17:34.459148Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/api/src/services/storyboard.service.ts")}
+2025-04-08T05:17:34.459182Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/api"), path: AnchoredSystemPathBuf("apps/api") }}))
+2025-04-08T05:17:34.459237Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-04-08T05:19:09.858253Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/api/src/services/storyboard.service.ts")}
+2025-04-08T05:19:09.858267Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/api"), path: AnchoredSystemPathBuf("apps/api") }}))
+2025-04-08T05:19:31.357807Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/4.cookie"), AnchoredSystemPathBuf(".turbo/cookies/5.cookie")}
+2025-04-08T05:19:31.357823Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:19:31.458237Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/shared/.turbo"), AnchoredSystemPathBuf("packages/shared/dist"), AnchoredSystemPathBuf(".turbo/cookies/6.cookie")}
+2025-04-08T05:19:31.458261Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }, WorkspacePackage { name: Other("@video-venture/shared"), path: AnchoredSystemPathBuf("packages/shared") }}))
+2025-04-08T05:20:56.156540Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/worker/src/services/video-pipeline.service.ts")}
+2025-04-08T05:20:56.157033Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/worker"), path: AnchoredSystemPathBuf("apps/worker") }}))
+2025-04-08T05:21:21.056451Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/shared/src/types/index.ts")}
+2025-04-08T05:21:21.056465Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/shared"), path: AnchoredSystemPathBuf("packages/shared") }}))
+2025-04-08T05:22:04.955676Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/7.cookie")}
+2025-04-08T05:22:04.955688Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:22:05.055800Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/8.cookie")}
+2025-04-08T05:22:05.055813Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:22:10.355686Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/9.cookie")}
+2025-04-08T05:22:10.355698Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:23:46.054728Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/shared/src/types/index.ts")}
+2025-04-08T05:23:46.054745Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/shared"), path: AnchoredSystemPathBuf("packages/shared") }}))
+2025-04-08T05:23:51.655397Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/10.cookie")}
+2025-04-08T05:23:51.655413Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:23:51.754307Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/11.cookie")}
+2025-04-08T05:23:51.754319Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:23:56.854942Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/12.cookie")}
+2025-04-08T05:23:56.854955Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:24:35.753439Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("packages/shared/src/types/index.ts")}
+2025-04-08T05:24:35.753455Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/shared"), path: AnchoredSystemPathBuf("packages/shared") }}))
+2025-04-08T05:24:39.353444Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/13.cookie"), AnchoredSystemPathBuf(".turbo/cookies/14.cookie")}
+2025-04-08T05:24:39.353457Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:24:45.355226Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf(".turbo/cookies/15.cookie")}
+2025-04-08T05:24:45.355258Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Root, path: AnchoredSystemPathBuf("") }}))
+2025-04-08T05:24:49.053472Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/worker/src/services/video-pipeline.service.ts")}
+2025-04-08T05:24:49.053485Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/worker"), path: AnchoredSystemPathBuf("apps/worker") }}))
+2025-04-08T05:24:49.066208Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-04-08T05:24:57.053042Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/worker/src/services/video-pipeline.service.ts")}
+2025-04-08T05:24:57.053054Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/worker"), path: AnchoredSystemPathBuf("apps/worker") }}))
+2025-04-08T05:24:57.091886Z  WARN turborepo_lib::package_changes_watcher: hashes are the same, no need to rerun
+2025-04-08T05:25:20.253953Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/api/src/services/storyboard.service.ts")}
+2025-04-08T05:25:20.253982Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/api"), path: AnchoredSystemPathBuf("apps/api") }}))
+2025-04-08T05:25:23.853321Z  WARN turborepo_lib::package_changes_watcher: changed_files: {AnchoredSystemPathBuf("apps/api/src/services/storyboard.service.ts")}
+2025-04-08T05:25:23.853347Z  WARN turborepo_lib::package_changes_watcher: changed_packages: Ok(Some({WorkspacePackage { name: Other("@video-venture/api"), path: AnchoredSystemPathBuf("apps/api") }}))

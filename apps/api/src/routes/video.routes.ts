@@ -12,8 +12,10 @@ export const createVideoRoutes = (
   videoController: VideoController
 ) => {
   // Create a storyboard
-  app.post("/api/storyboards", zodValidator("json", CreateStoryboardSchema), (c) =>
-    videoController.createStoryboard(c)
+  app.post(
+    "/api/storyboards",
+    zodValidator("json", CreateStoryboardSchema),
+    (c) => videoController.createStoryboard(c)
   );
 
   // Create a new video

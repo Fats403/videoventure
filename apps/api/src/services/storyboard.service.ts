@@ -1,216 +1,317 @@
-import { OpenAI } from "openai";
+import {
+  GoogleGenerativeAI,
+  HarmCategory,
+  HarmBlockThreshold,
+  GenerationConfig,
+  SafetySetting,
+  Content,
+} from "@google/generative-ai";
 import { z } from "zod";
-import { Scene, StoryboardResult } from "../types/storyboard.types";
+import { StoryboardResult } from "@video-venture/shared";
 
-// Define Zod schemas for validation
+// --- Configuration ---
+const TARGET_SCENE_DURATION_MIN_SECONDS = 5;
+const TARGET_SCENE_DURATION_MAX_SECONDS = 8;
+const INTERNAL_MAX_SCENES = 12; // Hard limit for scene count
+const DEFAULT_MIN_SCENES = 3; // Recommended min when AI chooses
+const DEFAULT_MAX_SCENES_AI = 8; // Recommended max when AI chooses
+
+// --- Zod Schemas ---
 const SceneSchema = z.object({
-  scene_number: z.number().int().positive(),
-  visual_description: z.string().min(50).max(512),
-  voiceover: z.string().max(650),
+  sceneNumber: z.number().int().positive(),
+  description: z
+    .string()
+    .min(40, "Visual description needs sufficient detail.")
+    .max(512, "Visual description exceeds maximum length (512 chars)."),
+  voiceover: z.string().min(1, "Voiceover cannot be empty."),
 });
 
-const StoryboardSchema = z.array(SceneSchema);
-
 const StoryboardResponseSchema = z.object({
-  title: z.string(),
-  visual_style: z.string(),
-  tags: z.array(z.string()).min(3).max(5),
+  title: z.string().min(1, "Title cannot be empty."),
+  tags: z.array(z.string()).min(3, "At least 3 tags required.").max(5),
+  musicDescription: z
+    .string()
+    .min(
+      15,
+      "Music description needs more detail (instruments, mood, tempo, genre, intent)."
+    )
+    .max(256, "Music description exceeds maximum length (256 chars)."),
   scenes: z
     .array(SceneSchema)
-    .min(2)
+    .min(2, "Minimum of 2 scenes required.")
+    .max(
+      INTERNAL_MAX_SCENES,
+      `Maximum number of scenes cannot exceed ${INTERNAL_MAX_SCENES}.`
+    )
     .refine(
       (scenes) => {
-        // Check if scene numbers are sequential starting from 1
         const sortedScenes = [...scenes].sort(
-          (a, b) => a.scene_number - b.scene_number
+          (a, b) => a.sceneNumber - b.sceneNumber
         );
         return sortedScenes.every(
-          (scene, index) => scene.scene_number === index + 1
+          (scene, index) => scene.sceneNumber === index + 1
         );
       },
       {
-        message: "Scene numbers must be sequential starting from 1",
+        message: "Scene numbers must be sequential starting from 1.",
       }
     ),
 });
 
+// --- Storyboard Service using Google Gemini ---
 export class StoryboardService {
-  private openai: OpenAI;
+  private genAI: GoogleGenerativeAI;
+  private modelName: string = "gemini-2.0-flash";
+  private maxAttempts = 3;
+  private internalMaxScenes = INTERNAL_MAX_SCENES;
 
-  constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+  constructor(apiKey?: string) {
+    const key = apiKey ?? process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new Error("GEMINI_API_KEY not set.");
+    }
+    this.genAI = new GoogleGenerativeAI(key);
   }
 
-  /**
-   * Generate a storyboard from an input concept using OpenAI with Zod validation
-   * @param inputConcept - The overall concept for the video
-   * @param maxScenes - Maximum number of scenes to generate (default: 5)
-   * @param includeHook - Whether to make the first scene a hook (default: true)
-   * @returns Object containing scenes array, visual style, and tags
-   */
-  async generateStoryboard(
-    inputConcept: string,
-    maxScenes = 5,
-    includeHook = true
-  ): Promise<StoryboardResult> {
-    console.log(`Generating storyboard...`);
-
-    // Calculate the exact number of scenes to request
-    const requestedScenes = Math.min(Math.max(2, maxScenes), 5);
-
+  // --- Helper: Build System Prompt (AI handles scene count interpretation) ---
+  private buildSystemPrompt(includeHook: boolean): Content {
     const hookGuidance = includeHook
       ? `
-HOOK SCENE GUIDANCE:
-- The first scene (scene 1) MUST be designed as an attention-grabbing "hook"
-- This hook should immediately captivate viewers and entice them to keep watching
-- It should present an intriguing visual, pose a question, show something unexpected, or create curiosity
-- The hook should be related to the main concept but designed specifically to drive engagement
+HOOK SCENE GUIDANCE (Scene 1):
+*   **Mandatory Hook:** Scene 1 MUST be an attention-grabbing hook.
+*   **Relevance:** Hook must clearly relate to the overall concept.
 `
       : "";
 
-    const systemPrompt = `You are an expert video creator and visual storyteller. Your task is to create a compelling visual storyboard for a video based on a concept provided by the user.
+    // Simplified timing guidance
+    const timingGuidance = `*   **Clip Duration:** Each scene represents a ~${TARGET_SCENE_DURATION_MIN_SECONDS}-${TARGET_SCENE_DURATION_MAX_SECONDS}s video clip. Write voiceover as 1-3 concise sentences speakable in this time. Match visual complexity to this duration.`;
 
-GUIDELINES:
-1. Create a catchy, engaging title for the video.
-2. IMPORTANT: You MUST create EXACTLY ${requestedScenes} scenes - no more, no less. This is a strict requirement.
-3. IMPORTANT: Scene numbers MUST start at 1 and be sequential (1, 2, 3, etc.).
-4. Select ONE consistent visual style for the entire video.
-5. For each scene, create:
-   - A well-crafted visual description under 512 characters that will be used for AI video generation
-   - A voiceover script (2-4 sentences) that would be spoken during a 6-14 second video clip
-6. Also generate 3-5 relevant tags that describe the content and style of the video.
+    // Updated Scene Count Instruction for AI interpretation
+    const sceneCountInstruction = `Analyze the user's input concept. Check if it requests a specific number of scenes (e.g., 'in 5 scenes', 'make 4 parts').
+*   If a specific count is requested: Generate EXACTLY that number of scenes, BUT DO NOT EXCEED the absolute maximum of ${this.internalMaxScenes} scenes.
+*   If no specific count is requested: Determine the optimal number of scenes (typically ${DEFAULT_MIN_SCENES}-${DEFAULT_MAX_SCENES_AI}, maximum ${this.internalMaxScenes}) needed to effectively tell the story based on the concept's scope and complexity. Then, generate exactly that number of scenes.
+Always ensure at least 2 scenes are generated.`;
+
+    const musicGuidance = `
+7.  **Music Description:** Based on the overall concept and scenes, create a detailed 'music_description' (under 256 chars) suitable for a text-to-music AI. Specify:
+    *   **Musical Parameters:** Instruments, tempo (BPM if appropriate), mood (e.g., upbeat, suspenseful, chill), genre (e.g., cinematic, hip-hop, ambient).
+    *   **Functional Intent:** Describe the music's role (e.g., background for tutorial, energetic intro, emotional underscore).
+    *   **Example:** "Uplifting and inspiring cinematic track with orchestral strings, piano melody, and subtle percussion. Builds anticipation. Tempo: 120 BPM. For a product launch video background."
+`;
+
+    const enhancedGuidance = `
+GUIDANCE FOR EXCELLENCE:
+1.  **Visual Storytelling:** Use composition, lighting, color, sensory details.
+2.  **Camera Work:** Specify camera movement clearly.
+3.  **Clarity & Detail:** Specific but concise for AI.
+4.  **Consistency:** 'visual_style' must apply to all descriptions.
+5.  **Voiceover Craft:** Concise (1-3 sentences), complements visual, matches tone. ${timingGuidance}
+6.  **Tags:** 3-5 relevant tags.
+${musicGuidance}
+`;
+
+    const promptText = `You are an expert video creator and visual storyteller specializing in AI video storyboards. Generate a compelling storyboard formatted precisely as JSON.
+
+TASK: Create a complete video storyboard based on the user's concept.
+
+CORE REQUIREMENTS:
+1.  **Title:** Catchy, engaging title.
+2.  **Scene Count:** ${sceneCountInstruction}
+3.  **Scene Numbering:** Sequential starting from 1.
+4.  **Music Description:** Generate a detailed 'musicDescription' following the guidance.
+5.  **Scene Content:** For EACH scene:
+    *   'description': Detailed (under 512 chars), with subject, context, action, style, camera, composition, ambiance. Action suitable for ${TARGET_SCENE_DURATION_MIN_SECONDS}-${TARGET_SCENE_DURATION_MAX_SECONDS}s.
+    *   'voiceover': Concise script (1-3 sentences) speakable in ${TARGET_SCENE_DURATION_MIN_SECONDS}-${TARGET_SCENE_DURATION_MAX_SECONDS}s.
+6.  **Tags:** 3-5 relevant tags.
 ${hookGuidance}
-ELEMENTS OF A GREAT VIDEO PROMPT:
-- Subject: Clearly define the main focus of each scene
-- Context: Establish the setting or environment
-- Action: Describe what's happening in the scene
-- Style: Maintain a consistent visual aesthetic throughout
-- Camera Motion: Specify how the camera moves (e.g., "drone shot panning across", "steady tracking shot")
-- Composition: Indicate how the shot is framed
-- Ambiance: Convey the mood, lighting, and atmosphere
-
-IMPORTANT TIPS FOR EFFECTIVE VIDEO GENERATION:
-- Be specific and detailed about visual elements
-- Include camera movements at the beginning of descriptions
-- Use positive descriptions rather than negations
-- Specify lighting, color palette, and atmosphere
-- Keep descriptions under 512 characters
-
-FORMAT YOUR RESPONSE AS A JSON OBJECT:
+${enhancedGuidance}
+OUTPUT FORMAT:
+*   Output ONLY a single, valid JSON object matching the structure below.
+*   No introductory text, explanations, or markdown formatting.
 {
-  "title": "Engaging Video Title",
-  "visual_style": "Detailed description of the visual style for the entire video",
-  "tags": ["tag1", "tag2", "tag3"],
+  "title": "string",
+  "tags": ["string", ...],
+  "musicDescription": "string",
   "scenes": [
-    {
-      "scene_number": 1,
-      "visual_description": "Detailed visual description for AI video generation, including the visual style",
-      "voiceover": "Short voiceover text for this scene",
-    },
-    ...additional scenes as needed...
+    { "sceneNumber": 1, "description": "string", "voiceover": "string" },
+    // ... up to the determined/requested number of scenes (max ${this.internalMaxScenes})
+    { "sceneNumber": N, "description": "string", "voiceover": "string" }
   ]
 }`;
 
-    try {
-      // Make up to 3 attempts to get a valid response
-      let attempts = 0;
-      const maxAttempts = 3;
-      let validatedResponse: StoryboardResult | null = null;
-      let lastError: Error | null = null;
+    return { role: "system", parts: [{ text: promptText }] };
+  }
 
-      while (attempts < maxAttempts && !validatedResponse) {
-        attempts++;
-        console.log(`Storyboard generation attempt ${attempts}/${maxAttempts}`);
+  // --- Helper: Call Gemini API with Retry ---
+  private async callGeminiAPI(
+    systemInstruction: Content,
+    userPrompt: string
+  ): Promise<any> {
+    const generationConfig: GenerationConfig = {
+      temperature: 0.7,
+      responseMimeType: "application/json",
+    };
+    const safetySettings: SafetySetting[] = [
+      {
+        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+    ];
 
+    const model = this.genAI.getGenerativeModel({
+      model: this.modelName,
+      systemInstruction: systemInstruction,
+      generationConfig,
+      safetySettings,
+    });
+
+    let attempts = 0;
+    let lastError: Error | null = null;
+
+    while (attempts < this.maxAttempts) {
+      attempts++;
+      console.log(`✨ Gemini API call attempt ${attempts}/${this.maxAttempts}`);
+      try {
+        const result = await model.generateContent(userPrompt);
+        const responseText = result.response.text();
         try {
-          const hookInstruction = includeHook
-            ? `Make sure the FIRST scene is designed as an attention-grabbing "hook" that captivates viewers and entices them to keep watching.`
-            : "";
-
-          const response = await this.openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [
-              { role: "system", content: systemPrompt },
-              {
-                role: "user",
-                content: `Create a video storyboard with EXACTLY ${requestedScenes} scenes based on this concept: "${inputConcept}". 
-
-If the concept already specifies scenes, you MUST follow that structure but ensure there are EXACTLY ${requestedScenes} scenes total.
-If the concept doesn't specify scenes, create a logical narrative with ${requestedScenes} scenes.
-
-Scene numbers MUST start at 1 and be sequential (1, 2, 3, etc.).
-${hookInstruction}
-
-Remember to format your response as a JSON object with a "title" string, "visual_style" string, "tags" array, and a "scenes" array containing all scene objects.`,
-              },
-            ],
-            response_format: { type: "json_object" },
-            temperature: 0.7,
-          });
-
-          // Parse the response
-          const content = response.choices?.[0].message.content ?? "";
-
-          let parsedResponse;
-          try {
-            parsedResponse = JSON.parse(content);
-          } catch (parseError: any) {
-            throw new Error(
-              `Failed to parse JSON response: ${parseError.message}`
-            );
-          }
-
-          // Validate the entire response structure
-          const validatedStoryboardResponse =
-            StoryboardResponseSchema.parse(parsedResponse);
-
-          // Extract the validated scenes array, visual style, and tags
-          const validatedStoryboard = validatedStoryboardResponse.scenes;
-          const visualStyle = validatedStoryboardResponse.visual_style;
-          const tags = validatedStoryboardResponse.tags || [];
-          const title = validatedStoryboardResponse.title;
-
-          // Validate with Zod schema
-          const validatedScenes = StoryboardSchema.parse(validatedStoryboard);
+          const parsedJson = JSON.parse(responseText);
           console.log(
-            `✅ Successfully validated storyboard with ${validatedScenes.length} scenes`
+            `✅ Gemini response parsed successfully (Attempt ${attempts})`
           );
-
-          validatedResponse = {
-            scenes: validatedScenes,
-            visualStyle: visualStyle,
-            tags: tags,
-            title: title,
-          };
-        } catch (attemptError: any) {
-          lastError = attemptError;
-          console.warn(`Attempt ${attempts} failed: ${attemptError.message}`);
-
-          // If this is a Zod validation error, log more details
-          if (attemptError.name === "ZodError") {
-            console.warn("Validation errors detected");
-          }
-
-          // Short pause before retry
-          if (attempts < maxAttempts) {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-          }
+          return parsedJson;
+        } catch (parseError: any) {
+          console.error("Raw response failed parsing:", responseText);
+          lastError = new Error(
+            `Failed to parse JSON response: ${parseError.message}`
+          );
+        }
+      } catch (apiError: any) {
+        lastError = apiError;
+        console.warn(
+          `⚠️ Gemini API call failed (Attempt ${attempts}): ${apiError.message}`
+        );
+        if (apiError.response?.promptFeedback) {
+          console.warn(
+            "Gemini prompt feedback:",
+            apiError.response.promptFeedback
+          );
         }
       }
-
-      // If we couldn't get a valid response after all attempts
-      if (!validatedResponse) {
-        throw new Error(
-          `Failed to generate valid storyboard after ${maxAttempts} attempts: ${lastError?.message}`
+      if (attempts < this.maxAttempts) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 1500 + attempts * 500)
         );
       }
-
-      return validatedResponse;
-    } catch (error: any) {
-      console.error("❌ Error generating storyboard:", error.message);
-      throw error;
     }
+    console.error(
+      `❌ Failed to get valid JSON response after ${this.maxAttempts} attempts.`
+    );
+    throw (
+      lastError ?? new Error("Unknown error during Gemini API interaction.")
+    );
+  }
+
+  /**
+   * Generate a storyboard from a concept, including a music description.
+   * @param inputConcept - The overall concept, potentially including a scene count request like "in 5 scenes".
+   * @param includeHook - Whether to make the first scene a hook.
+   * @returns StoryboardResult object.
+   */
+  async generateStoryboard(
+    inputConcept: string,
+    includeHook = true
+  ): Promise<StoryboardResult> {
+    console.log(`🚀 Generating storyboard for concept: "${inputConcept}"`);
+    console.log(
+      `📋 AI will determine scene count based on input (max ${this.internalMaxScenes}).`
+    );
+    console.log("🎶 AI will also generate a music description.");
+
+    // The system prompt now handles interpreting the scene count request
+    const systemInstruction = this.buildSystemPrompt(includeHook);
+
+    // The user prompt simply provides the concept for the AI to analyze
+    const userPrompt = `Create a video storyboard based on this concept: "${inputConcept}". Follow all system prompt instructions precisely, including determining the appropriate number of scenes.`;
+
+    let lastValidationError: Error | null = null;
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+      try {
+        const parsedResponse = await this.callGeminiAPI(
+          systemInstruction,
+          userPrompt
+        );
+
+        // Validate the response structure AND scene count limits
+        const validationResult =
+          StoryboardResponseSchema.safeParse(parsedResponse);
+
+        if (!validationResult.success) {
+          lastValidationError = new z.ZodError(validationResult.error.issues);
+          console.warn(
+            `⚠️ Zod validation failed (Attempt ${attempt}):`,
+            validationResult.error.format()
+          );
+          if (attempt < this.maxAttempts) {
+            console.log("Retrying after validation failure...");
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            continue;
+          } else {
+            throw lastValidationError;
+          }
+        }
+
+        const validatedData = validationResult.data;
+
+        // Final check (belt-and-suspenders) in case AI ignored the max limit prompt instruction
+        if (validatedData.scenes.length > this.internalMaxScenes) {
+          console.warn(
+            `⚠️ AI generated ${validatedData.scenes.length} scenes, exceeding internal limit of ${this.internalMaxScenes}. Truncating.`
+          );
+          validatedData.scenes = validatedData.scenes.slice(
+            0,
+            this.internalMaxScenes
+          );
+          // Ensure numbering is still sequential after potential truncation (though slice should maintain it)
+          validatedData.scenes.forEach((scene, index) => {
+            scene.sceneNumber = index + 1;
+          });
+        }
+
+        console.log(
+          `✅ Successfully validated storyboard with ${validatedData.scenes.length} scenes and music description.`
+        );
+        return {
+          title: validatedData.title,
+          tags: validatedData.tags,
+          musicDescription: validatedData.musicDescription,
+          scenes: validatedData.scenes,
+        };
+      } catch (error) {
+        console.error(
+          `❌ Error during storyboard generation (Attempt ${attempt}):`,
+          error
+        );
+        if (attempt >= this.maxAttempts) {
+          throw error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+    }
+    throw new Error(
+      `Failed to generate storyboard after ${this.maxAttempts} attempts.`
+    );
   }
 }

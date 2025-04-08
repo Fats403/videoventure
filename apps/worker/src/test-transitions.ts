@@ -1,12 +1,12 @@
 import * as fs from "fs";
 import * as path from "path";
-import concat from "ffmpeg-concat";
+import { VideoProcessingService } from "./services/video-processing.service";
 
-async function testTransitionService() {
+async function testVideoCombination() {
   // Define paths
-  const inputVideo1Path = path.join(__dirname, "test-files/input-video1.mp4");
-  const inputVideo2Path = path.join(__dirname, "test-files/input-video2.mp4");
-  const inputVideo3Path = path.join(__dirname, "test-files/input-video3.mp4");
+  const inputVideo1Path = path.join(__dirname, "test-files/video1.mp4");
+  const inputVideo2Path = path.join(__dirname, "test-files/video1.mp4");
+  const inputVideo3Path = path.join(__dirname, "test-files/video1.mp4");
 
   const outputVideoPath = path.join(__dirname, "test-files/output-video.mp4");
   // Ensure test directory exists
@@ -15,31 +15,23 @@ async function testTransitionService() {
     fs.mkdirSync(testDir, { recursive: true });
   }
 
+  // Instantiate the service
+  const videoProcessingService = new VideoProcessingService();
+
   try {
-    console.log("Starting video concatenation...");
-    await concat({
-      output: outputVideoPath,
-      videos: [inputVideo1Path, inputVideo2Path, inputVideo3Path],
-      // Example: Add 500ms fade transitions between videos
-      // Adjust 'name' and 'duration' based on the library's supported transitions
-      transitions: [
-        {
-          name: "fade", // Or 'directionalwipe', 'crosszoom', etc.
-          duration: 500,
-        },
-        {
-          name: "fade",
-          duration: 500,
-        },
-      ],
-      // Optional: Add other ffmpeg-concat options if needed
-      // e.g., tempDir: path.join(__dirname, 'temp'), concurrency: 4
-    });
-    console.log("Concatenation finished successfully:", outputVideoPath);
+    console.log("Starting video combination using VideoProcessingService...");
+    // Use the service method
+    await videoProcessingService.combineVideos(
+      [inputVideo1Path, inputVideo2Path, inputVideo3Path],
+      outputVideoPath,
+      "fade",
+      1
+    );
+    console.log("Video combination finished successfully:", outputVideoPath);
   } catch (error) {
-    console.error("Error during video concatenation:", error);
+    console.error("Error during video combination:", error);
   }
 }
 
 // Run the test
-testTransitionService();
+testVideoCombination();

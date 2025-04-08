@@ -1,6 +1,5 @@
 import * as fs from "fs";
 import * as path from "path";
-// import axios from "axios"; // Removed axios
 import { OpenAI } from "openai";
 import { fal } from "@fal-ai/client";
 import { Readable } from "stream"; // Needed for fetch response stream
@@ -243,7 +242,7 @@ Guidelines:
 
       // Step 3: Download the generated music file (WAV)
       console.log(`Downloading Fal.ai music from: ${resultUrl}`);
-      await this.downloadAudio(resultUrl, outputPath);
+      await this.downloadFile(resultUrl, outputPath);
 
       return outputPath;
     } catch (error: any) {
@@ -398,7 +397,7 @@ Guidelines:
 
       // Step 3: Download the composed track using fetch
       console.log(`Downloading Beatoven.ai track from: ${trackUrl}`);
-      await this.downloadAudio(trackUrl, outputPath); // Use shared download helper
+      await this.downloadFile(trackUrl, outputPath); // Use renamed helper
 
       return outputPath;
     } catch (error: any) {
@@ -411,18 +410,20 @@ Guidelines:
   }
 
   /**
-   * Downloads an audio file from a URL to a specified path using fetch.
-   * @param url - The URL of the audio file to download.
+   * Downloads a file from a URL to a specified path using fetch.
+   * Renamed from downloadAudio to reflect general purpose.
+   * @param url - The URL of the file to download.
    * @param outputPath - The local path to save the downloaded file.
    */
-  private async downloadAudio(url: string, outputPath: string): Promise<void> {
+  private async downloadFile(url: string, outputPath: string): Promise<void> {
+    // Renamed method
     try {
-      console.log(`Attempting to download audio from ${url} to ${outputPath}`);
+      console.log(`Attempting to download file from ${url} to ${outputPath}`); // Updated log
       const response = await fetch(url, { method: "GET" });
 
       if (!response.ok) {
         throw new Error(
-          `Failed to download audio. Status: ${response.status} ${response.statusText}`
+          `Failed to download file. Status: ${response.status} ${response.statusText}` // Updated log
         );
       }
 
@@ -432,7 +433,6 @@ Guidelines:
       }
 
       // Convert Node.js fetch's ReadableStream to Node.js stream.Readable
-      // This is necessary for piping to fs.createWriteStream
       const bodyStream = Readable.fromWeb(response.body as any); // Cast needed
 
       const writer = fs.createWriteStream(outputPath);
@@ -442,11 +442,11 @@ Guidelines:
 
       return new Promise((resolve, reject) => {
         writer.on("finish", () => {
-          console.log(`✅ Downloaded audio to ${outputPath}`);
+          console.log(`✅ Downloaded file to ${outputPath}`); // Updated log
           resolve();
         });
         writer.on("error", (err) => {
-          console.error(`Failed to write audio file: ${err.message}`);
+          console.error(`Failed to write file: ${err.message}`); // Updated log
           // Attempt to clean up partially written file
           if (fs.existsSync(outputPath)) {
             try {
@@ -457,21 +457,20 @@ Guidelines:
               );
             }
           }
-          reject(new Error(`Failed to write audio file: ${err.message}`));
+          reject(new Error(`Failed to write file: ${err.message}`)); // Updated log
         });
         bodyStream.on("error", (err: Error) => {
           // Also handle errors on the source stream
           console.error(`Error during download stream: ${err.message}`);
           writer.close(); // Ensure writer is closed on stream error
-          reject(new Error(`Failed to download audio stream: ${err.message}`));
+          reject(new Error(`Failed to download file stream: ${err.message}`)); // Updated log
         });
       });
     } catch (error: any) {
       console.error(
-        `❌ Failed to download audio from ${url}: ${error.message}`
+        `❌ Failed to download file from ${url}: ${error.message}` // Updated log
       );
-      // Add specific checks for fetch-related errors if needed
-      throw new Error(`Failed to download audio: ${error.message}`);
+      throw new Error(`Failed to download file: ${error.message}`); // Updated log
     }
   }
 }

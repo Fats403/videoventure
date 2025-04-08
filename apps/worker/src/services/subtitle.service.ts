@@ -3,9 +3,6 @@ import * as path from "path";
 import ffmpeg from "fluent-ffmpeg";
 import { WordTimestamp } from "./audio.service";
 
-/**
- * Clean subtitle service with professional text outline and custom font support
- */
 export class SubtitleService {
   /**
    * Find the appropriate font file path
