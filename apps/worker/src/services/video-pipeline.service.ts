@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import * as admin from "firebase-admin";
+import { Firestore, getFirestore } from "firebase-admin/firestore";
 import { VideoGenerationService } from "./video-generation.service";
 import { AudioService } from "./audio.service";
 import { MusicService } from "./music.service";
@@ -11,10 +11,10 @@ import {
 import {
   JobStatus,
   JobType,
-  SceneData,
+  Scene,
   VideoVisibility,
-  StoryboardResult,
   S3Service,
+  Video,
 } from "@video-venture/shared";
 import { SubtitleService } from "./subtitle.service";
 
@@ -24,7 +24,7 @@ export class VideoPipelineService {
   private musicService: MusicService;
   private videoProcessingService: VideoProcessingService;
   private s3Service: S3Service;
-  private db: admin.firestore.Firestore;
+  private db: Firestore;
   private s3BucketName: string;
   private tempDir: string;
   private subtitleService: SubtitleService;
@@ -36,7 +36,7 @@ export class VideoPipelineService {
     this.videoProcessingService = new VideoProcessingService();
     this.s3Service = new S3Service();
     this.subtitleService = new SubtitleService();
-    this.db = admin.firestore();
+    this.db = getFirestore();
     this.s3BucketName = process.env.S3_BUCKET_NAME || "";
     this.tempDir = path.join(process.cwd(), "temp");
 
@@ -60,19 +60,11 @@ export class VideoPipelineService {
     jobId,
     videoId,
     userId,
-    voiceId = "JBFqnCBsd6RMkjVDRZzb",
-    videoModel = "nova-reel",
-    providerConfig = {},
   }: {
     jobId: string;
     videoId: string;
     userId: string;
-    voiceId: string;
-    videoModel: string;
-    providerConfig?: Record<string, any>;
   }): Promise<void> {
-    console.log(`Starting video pipeline for using model: ${videoModel}`);
-
     // Create job-specific directory
     const jobTempDir = path.join(this.tempDir, jobId);
     if (!fs.existsSync(jobTempDir)) {
@@ -80,7 +72,13 @@ export class VideoPipelineService {
     }
 
     const video = await this.db.collection("videos").doc(videoId).get();
-    const storyboard = video.data()?.storyboard as StoryboardResult;
+
+    if (!video.exists) {
+      throw new Error("No video data found");
+    }
+
+    const videoData = video.data() as Video;
+    const { voiceId, videoModel, providerConfig, storyboard } = videoData;
 
     try {
       // Update progress
@@ -149,7 +147,7 @@ export class VideoPipelineService {
 
       // Step 5: Download videos from S3 and prepare scenes
       const scenesWithAudio: SceneWithAudio[] = [];
-      const sceneData: SceneData[] = [];
+      const sceneData: Scene[] = [];
 
       for (let i = 0; i < completedVideoJobs.length; i++) {
         const job = completedVideoJobs[i];
@@ -191,7 +189,7 @@ export class VideoPipelineService {
           scenePaths.audio
         );
 
-        // Upload video to S3 (in the new structure)
+        // Upload video to S3
         await this.s3Service.uploadFile(
           videoPath,
           this.s3BucketName,
@@ -288,6 +286,7 @@ export class VideoPipelineService {
         (sum, scene) => sum + scene.duration,
         0
       );
+
       const musicPath = await this.musicService.getBackgroundMusic(
         "Concept...", // TODO: update this
         jobId,
@@ -318,6 +317,7 @@ export class VideoPipelineService {
         jobTempDir,
         "final_video_with_music.mp4"
       );
+
       await this.videoProcessingService.addMusicToVideo(
         finalVideoPath, // Use the combined video that already has subtitles
         musicPath,
@@ -379,7 +379,6 @@ export class VideoPipelineService {
           userId,
           currentJobId: jobId,
           duration: totalDuration,
-          visibility: "PRIVATE" as VideoVisibility,
           processingStatus: "COMPLETED" as JobStatus,
           processingHistory: [
             {
@@ -389,9 +388,6 @@ export class VideoPipelineService {
               timestamp: new Date().toISOString(),
             },
           ],
-          views: 0,
-          version: 1,
-          createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
 

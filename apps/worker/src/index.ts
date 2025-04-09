@@ -34,17 +34,13 @@ const worker = new Worker(
     try {
       // Properly type the job data
       const jobData = job.data as Job;
-      const { jobId, videoId, userId, params } = jobData;
-      const { voiceId, videoModel, providerConfig } = params;
+      const { jobId, videoId, userId } = jobData;
 
       // Process the story and generate the video
       const result = await videoPipelineService.processConcept({
         jobId,
         videoId,
         userId,
-        voiceId,
-        videoModel,
-        providerConfig,
       });
 
       console.log(`✅ Job ${jobId} completed successfully`);

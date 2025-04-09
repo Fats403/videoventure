@@ -7,6 +7,8 @@ export interface Scene {
   sceneNumber: number;
   description: string;
   voiceover: string;
+  version?: number;
+  duration?: number;
 }
 
 export interface StoryboardResult {
@@ -16,25 +18,12 @@ export interface StoryboardResult {
   title: string;
 }
 
-export interface SceneData {
-  sceneNumber: number;
-  description: string;
-  voiceover: string;
-  duration: number;
-  version: number; // Track version of this scene
-}
-
 export interface Job {
   jobId: string;
   videoId: string;
   userId: string;
   type: JobType;
   status: JobStatus;
-  params: {
-    voiceId: string;
-    videoModel: string;
-    providerConfig?: Record<string, any>;
-  };
   progress?: {
     currentStep: string;
     completedSteps: number;
@@ -49,20 +38,15 @@ export interface Job {
 export interface Video {
   videoId: string;
   userId: string;
-  title: string;
-  orientation: VideoOrientation;
   visibility: VideoVisibility;
   duration: number;
   views: number;
-  tags: string[];
-
-  // Technical data
   originalConcept: string;
-  visualStyle: string;
-  version: number; // Track version of the full video
-  scenes: SceneData[];
-
-  // Processing status
+  voiceId: string;
+  videoModel: string;
+  providerConfig: Record<string, any>;
+  version: number;
+  storyboard: StoryboardResult;
   currentJobId?: string;
   processingHistory?: {
     jobId: string;
@@ -70,8 +54,6 @@ export interface Video {
     status: JobStatus;
     timestamp: string;
   }[];
-
-  // Timestamps
   createdAt: string;
   updatedAt: string;
 }

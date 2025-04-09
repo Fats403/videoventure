@@ -16,6 +16,7 @@
     "@hono/zod-validator": "^0.4.3",
     "@video-venture/shared": "*",
     "bullmq": "^4.12.0",
+    "elevenlabs": "^1.56.0",
     "firebase-admin": "^13.2.0",
     "hono": "^4.7.5",
     "nanoid": "^3.3.6",

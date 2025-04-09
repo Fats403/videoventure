@@ -8,6 +8,9 @@ import { VideoService } from "./services/video.service";
 import { VideoController } from "./controllers/video.controller";
 import { createVideoRoutes } from "./routes/video.routes";
 import { clerkMiddleware } from "@hono/clerk-auth";
+import { VoiceController } from "./controllers/voice.controller";
+import { createVoiceRoutes } from "./routes/voice.routes";
+import { VoiceService } from "./services/voice.service";
 
 // Load environment variables
 const PORT = process.env.PORT || 6969;
@@ -38,9 +41,11 @@ const videoQueue = new Queue("video-processing", {
 
 // Initialize services
 const videoService = new VideoService(videoQueue);
+const voiceService = new VoiceService();
 
 // Initialize controllers
 const videoController = new VideoController(videoService);
+const voiceController = new VoiceController(voiceService);
 
 // Initialize Hono app
 const app = new Hono();
@@ -50,10 +55,11 @@ app.use("*", logger());
 app.use("*", clerkMiddleware());
 
 // Health check
-app.get("/", (c) => c.json({ status: "ok" }));
+app.get("/health-check", (c) => c.json({ status: "ok" }));
 
 // Register routes
 createVideoRoutes(app, videoController);
+createVoiceRoutes(app, voiceController);
 
 // Error handling
 app.onError((err, c) => {
