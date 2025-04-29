@@ -1,7 +1,12 @@
 export type JobType = "CREATE_VIDEO" | "UPDATE_SCENE" | "REGENERATE_VIDEO";
-export type JobStatus = "QUEUED" | "IN_PROGRESS" | "COMPLETED" | "FAILED";
+export type VideoStatus =
+  | "CREATED"
+  | "QUEUED"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "FAILED";
 export type VideoVisibility = "PUBLIC" | "PRIVATE";
-export type VideoOrientation = "PORTRAIT" | "LANDSCAPE";
+export type VideoOrientation = "PORTRAIT" | "LANDSCAPE" | "SQUARE";
 
 export interface Scene {
   sceneNumber: number;
@@ -23,13 +28,6 @@ export interface Job {
   videoId: string;
   userId: string;
   type: JobType;
-  status: JobStatus;
-  progress?: {
-    currentStep: string;
-    completedSteps: number;
-    totalSteps: number;
-    percentComplete: number;
-  };
   error?: string;
   createdAt: string;
   updatedAt: string;
@@ -47,13 +45,21 @@ export interface Video {
   providerConfig: Record<string, any>;
   version: number;
   storyboard: StoryboardResult;
+  status: VideoStatus;
   currentJobId?: string;
+  progress?: {
+    currentStep: string;
+    completedSteps: number;
+    totalSteps: number;
+    percentComplete: number;
+  };
   processingHistory?: {
     jobId: string;
     type: JobType;
-    status: JobStatus;
+    status: VideoStatus;
     timestamp: string;
   }[];
+  error?: string;
   createdAt: string;
   updatedAt: string;
 }

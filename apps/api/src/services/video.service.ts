@@ -3,7 +3,7 @@ import { Queue } from "bullmq";
 import { Firestore, getFirestore } from "firebase-admin/firestore";
 import {
   Job,
-  JobStatus,
+  VideoStatus,
   JobType,
   S3Service,
   Video,
@@ -63,7 +63,7 @@ export class VideoService {
           voiceId: "JBFqnCBsd6RMkjVDRZzb", // Default voice
           videoModel: "nova-reel", // Default video model
           providerConfig: {}, // Default empty config
-          processingStatus: "PENDING" as JobStatus,
+          status: "CREATED" as VideoStatus,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -157,7 +157,9 @@ export class VideoService {
       throw new Error("Unauthorized access to video");
     }
 
-    // Check job status and throw error if it's already in progress
+    if (videoData.status !== "CREATED") {
+      throw new Error("Video has already started processing");
+    }
 
     const jobId = nanoid();
 
@@ -167,7 +169,6 @@ export class VideoService {
       videoId,
       userId,
       type: "CREATE_VIDEO" as JobType,
-      status: "QUEUED" as JobStatus,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -181,7 +182,7 @@ export class VideoService {
       .doc(videoId)
       .update({
         currentJobId: jobId,
-        processingStatus: "QUEUED" as JobStatus,
+        status: "QUEUED" as VideoStatus,
         updatedAt: new Date().toISOString(),
       });
 

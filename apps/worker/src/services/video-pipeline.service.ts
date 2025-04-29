@@ -9,12 +9,11 @@ import {
   SceneWithAudio,
 } from "./video-processing.service";
 import {
-  JobStatus,
   JobType,
   Scene,
-  VideoVisibility,
   S3Service,
   Video,
+  VideoStatus,
 } from "@video-venture/shared";
 import { SubtitleService } from "./subtitle.service";
 
@@ -82,7 +81,7 @@ export class VideoPipelineService {
 
     try {
       // Update progress
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
+      await this.updateVideoStatus(videoId, "PROCESSING", {
         currentStep: "Generating scene videos",
         completedSteps: 1,
         totalSteps: 12,
@@ -108,7 +107,7 @@ export class VideoPipelineService {
           videoJobs,
           jobId,
           async (progress) => {
-            await this.updateJobStatus(jobId, "IN_PROGRESS", {
+            await this.updateVideoStatus(videoId, "PROCESSING", {
               currentStep: "Generating scene videos",
               completedSteps: 2,
               totalSteps: 12,
@@ -118,7 +117,7 @@ export class VideoPipelineService {
         );
 
       // Update progress
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
+      await this.updateVideoStatus(videoId, "PROCESSING", {
         currentStep: "Generating audio for scenes",
         completedSteps: 3,
         totalSteps: 12,
@@ -138,7 +137,7 @@ export class VideoPipelineService {
       const audioPaths = audioResults.map((result) => result.audioPath);
 
       // Update progress
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
+      await this.updateVideoStatus(videoId, "PROCESSING", {
         currentStep: "Processing scene videos and audio",
         completedSteps: 4,
         totalSteps: 12,
@@ -216,7 +215,7 @@ export class VideoPipelineService {
       }
 
       // Update progress
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
+      await this.updateVideoStatus(videoId, "PROCESSING", {
         currentStep: "Combining audio with videos",
         completedSteps: 5,
         totalSteps: 12,
@@ -274,7 +273,7 @@ export class VideoPipelineService {
       );
 
       // Update progress
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
+      await this.updateVideoStatus(videoId, "PROCESSING", {
         currentStep: "Generating background music",
         completedSteps: 7,
         totalSteps: 12,
@@ -305,7 +304,7 @@ export class VideoPipelineService {
       );
 
       // Update progress
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
+      await this.updateVideoStatus(videoId, "PROCESSING", {
         currentStep: "Adding music to final video",
         completedSteps: 8,
         totalSteps: 12,
@@ -325,7 +324,7 @@ export class VideoPipelineService {
       );
 
       // Update progress
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
+      await this.updateVideoStatus(videoId, "PROCESSING", {
         currentStep: "Uploading final video",
         completedSteps: 9,
         totalSteps: 12,
@@ -340,7 +339,7 @@ export class VideoPipelineService {
       );
 
       // Update progress
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
+      await this.updateVideoStatus(videoId, "PROCESSING", {
         currentStep: "Generating thumbnail",
         completedSteps: 10,
         totalSteps: 12,
@@ -363,7 +362,7 @@ export class VideoPipelineService {
       );
 
       // Update progress
-      await this.updateJobStatus(jobId, "IN_PROGRESS", {
+      await this.updateVideoStatus(videoId, "PROCESSING", {
         currentStep: "Finalizing video",
         completedSteps: 11,
         totalSteps: 12,
@@ -379,12 +378,12 @@ export class VideoPipelineService {
           userId,
           currentJobId: jobId,
           duration: totalDuration,
-          processingStatus: "COMPLETED" as JobStatus,
+          status: "COMPLETED" as VideoStatus,
           processingHistory: [
             {
               jobId,
               type: "CREATE_VIDEO" as JobType,
-              status: "COMPLETED" as JobStatus,
+              status: "COMPLETED" as VideoStatus,
               timestamp: new Date().toISOString(),
             },
           ],
@@ -392,7 +391,7 @@ export class VideoPipelineService {
         });
 
       // Update job status to completed
-      await this.updateJobStatus(jobId, "COMPLETED", {
+      await this.updateVideoStatus(videoId, "COMPLETED", {
         currentStep: "Completed",
         completedSteps: 12,
         totalSteps: 12,
@@ -407,7 +406,13 @@ export class VideoPipelineService {
       console.error("❌ Error in story processing pipeline:", error.message);
 
       // Update job status to failed
-      await this.updateJobStatus(jobId, "FAILED", undefined, error.message);
+      await this.updateVideoStatus(
+        videoId,
+        "FAILED",
+        undefined,
+        error.message,
+        jobId
+      );
 
       // Clean up temporary files even if there was an error
       this.cleanupTempDirectory(jobTempDir);
@@ -441,20 +446,33 @@ export class VideoPipelineService {
    * @param progress - Optional progress information
    * @param error - Optional error message
    */
-  private async updateJobStatus(
-    jobId: string,
-    status: JobStatus,
+  private async updateVideoStatus(
+    videoId: string,
+    status: VideoStatus,
     progress?: {
       currentStep: string;
       completedSteps: number;
       totalSteps: number;
       percentComplete: number;
     },
-    error?: string
+    error?: string,
+    jobId?: string
   ): Promise<void> {
     const updateData: any = {
       status,
       updatedAt: new Date().toISOString(),
+      ...(status === "FAILED"
+        ? {
+            processingHistory: [
+              {
+                jobId,
+                type: "CREATE_VIDEO" as JobType,
+                status: "FAILED" as VideoStatus,
+                timestamp: new Date().toISOString(),
+              },
+            ],
+          }
+        : {}),
     };
 
     if (progress) {
@@ -465,9 +483,10 @@ export class VideoPipelineService {
       updateData.error = error;
     }
 
-    await this.db.collection("jobs").doc(jobId).update(updateData);
+    await this.db.collection("videos").doc(videoId).update(updateData);
+
     console.log(
-      `Updated job ${jobId} status to ${status}${
+      `Updated video ${videoId} status to ${status}${
         progress ? ` (${progress.percentComplete}%)` : ""
       }`
     );
