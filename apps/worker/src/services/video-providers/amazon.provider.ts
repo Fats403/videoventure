@@ -37,8 +37,8 @@ export class AmazonProvider implements VideoProvider {
     modelId: string,
     providerConfig?: Record<string, any>
   ): Promise<VideoGenerationJob> {
-    const sceneNumber = scene.scene_number;
-    const description = scene.visual_description;
+    const sceneNumber = scene.sceneNumber;
+    const description = scene.description;
 
     // Get provider configuration
     const modelConfig = getProviderModelConfig(modelId);
