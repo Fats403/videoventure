@@ -12,7 +12,7 @@ env:
   ORGANIZATION: fats403
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -78,47 +78,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create deployment file
-        env:
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          echo "TAG=$VERSION" > .env.deploy
-          echo "DOCKER_REGISTRY=${{ env.REGISTRY }}/${{ env.ORGANIZATION }}" >> .env.deploy
-
-      - name: Upload deployment file
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-files
-          path: .env.deploy
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download deployment file
-        uses: actions/download-artifact@v4
-        with:
-          name: deployment-files
-
-      - name: Copy deployment file to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: deploy
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: ".env.deploy"
-          target: "/opt/videoventure"
-          strip_components: 0
-
-      - name: Execute deployment script
+      - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script_stop: true
+          envs: REGISTRY,ORGANIZATION,VERSION
+          environment:
+            VERSION: ${{ steps.meta.outputs.version }}
           script: |
             cd /opt/videoventure
+            # Create the environment variables file directly
+            echo "TAG=${{ steps.meta.outputs.version }}" > .env.deploy
+            echo "DOCKER_REGISTRY=${{ env.REGISTRY }}/${{ env.ORGANIZATION }}" >> .env.deploy
+            # Make sure the deployment script is executable
             chmod +x scripts/deploy.sh
+            # Run the deployment
             ./scripts/deploy.sh
