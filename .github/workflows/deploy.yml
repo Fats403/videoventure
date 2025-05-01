@@ -80,19 +80,21 @@ jobs:
 
       - name: Deploy to server
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          REGISTRY: ${{ env.REGISTRY }}
+          ORGANIZATION: ${{ env.ORGANIZATION }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: deploy
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script_stop: true
-          envs: REGISTRY,ORGANIZATION,VERSION
-          environment:
-            VERSION: ${{ steps.meta.outputs.version }}
+          envs: VERSION,REGISTRY,ORGANIZATION
           script: |
             cd /opt/videoventure
             # Create the environment variables file directly
-            echo "TAG=${{ steps.meta.outputs.version }}" > .env.deploy
-            echo "DOCKER_REGISTRY=${{ env.REGISTRY }}/${{ env.ORGANIZATION }}" >> .env.deploy
+            echo "TAG=$VERSION" > .env.deploy
+            echo "DOCKER_REGISTRY=$REGISTRY/$ORGANIZATION" >> .env.deploy
             # Make sure the deployment script is executable
             chmod +x scripts/deploy.sh
             # Run the deployment
