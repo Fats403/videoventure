@@ -8,11 +8,14 @@ export async function requireAuth(
   const { userId } = getAuth(request);
 
   if (!userId) {
-    reply.status(401).send({ message: "Authentication required" });
+    reply.status(401).send({
+      statusCode: 401,
+      message: "Authentication required",
+      error: "Unauthorized",
+    });
     return;
   }
 
-  // Attach userId to request for easy access
   request.userId = userId;
 }
 

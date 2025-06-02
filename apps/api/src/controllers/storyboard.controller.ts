@@ -1,5 +1,5 @@
 import { StoryboardService } from "../services/storyboard.service";
-import { StoryboardRequest } from "../schemas/video.schema";
+import { StoryboardRequest } from "../schemas/storyboard.schema";
 
 export class StoryboardController {
   private storyboardService: StoryboardService;

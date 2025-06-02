@@ -6,11 +6,15 @@ import {
   SafetySetting,
   Content,
 } from "@google/generative-ai";
-import { StoryboardVariantSchema } from "../schemas/video.schema";
+import {
+  StoryboardRequest,
+  StoryboardResponse,
+  StoryboardLLMResponseSchema,
+} from "../schemas/storyboard.schema";
 
 export class StoryboardService {
   private genAI: GoogleGenerativeAI;
-  private modelName: string = "gemini-2.0-flash";
+  private modelName: string = "gemini-1.5-flash";
   private maxAttempts = 3;
 
   constructor(apiKey?: string) {
@@ -108,23 +112,28 @@ OUTPUT FORMAT (JSON only, no other text):
   /**
    * Generate initial storyboard variants (2 by default)
    */
-  async generateInitialVariants(conceptData: any): Promise<any[]> {
+  async generateInitialVariants(
+    conceptData: StoryboardRequest
+  ): Promise<StoryboardResponse[]> {
     console.log(`🚀 Generating initial storyboard variants for concept`);
 
     const systemInstruction = this.buildSystemPrompt(2);
     const userPrompt = this.buildUserPrompt(conceptData);
 
     const response = await this.callGeminiAPI(systemInstruction, userPrompt);
-    const validationResult = StoryboardVariantSchema.safeParse(response);
+
+    const validationResult = StoryboardLLMResponseSchema.safeParse(response);
 
     if (!validationResult.success) {
+      console.error("❌ Validation failed:", validationResult.error.message);
+      console.error("📄 Response that failed validation:", response);
       throw new Error(
         `Invalid response format: ${validationResult.error.message}`
       );
     }
 
     // Add unique IDs to variants
-    return validationResult.data.variants.map((variant, index) => ({
+    return validationResult.data.map((variant, index) => ({
       ...variant,
       id: `variant-${Date.now()}-${index}`,
     }));
@@ -133,7 +142,9 @@ OUTPUT FORMAT (JSON only, no other text):
   /**
    * Generate one additional variant (for "Generate More" button)
    */
-  async generateAdditionalVariant(conceptData: any): Promise<any> {
+  async generateAdditionalVariant(
+    conceptData: StoryboardRequest
+  ): Promise<StoryboardResponse> {
     console.log(`🚀 Generating additional storyboard variant`);
 
     const systemInstruction = this.buildSystemPrompt(1);
@@ -142,7 +153,7 @@ OUTPUT FORMAT (JSON only, no other text):
       "\n\nCreate a unique variant that offers a fresh perspective different from typical approaches.";
 
     const response = await this.callGeminiAPI(systemInstruction, userPrompt);
-    const validationResult = StoryboardVariantSchema.safeParse(response);
+    const validationResult = StoryboardLLMResponseSchema.safeParse(response);
 
     if (!validationResult.success) {
       throw new Error(
@@ -150,7 +161,7 @@ OUTPUT FORMAT (JSON only, no other text):
       );
     }
 
-    const variant = validationResult.data.variants[0];
+    const variant = validationResult.data[0];
     if (!variant) {
       throw new Error("No variant generated");
     }
