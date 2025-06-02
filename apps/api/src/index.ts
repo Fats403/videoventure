@@ -1,16 +1,15 @@
-import { serve } from "@hono/node-server";
-import { Hono } from "hono";
-import { logger } from "hono/logger";
+import Fastify from "fastify";
+import { clerkPlugin } from "@clerk/fastify";
+import {
+  serializerCompiler,
+  validatorCompiler,
+  ZodTypeProvider,
+} from "fastify-type-provider-zod";
 import { Queue } from "bullmq";
 import { initializeApp } from "firebase-admin/app";
 import { credential } from "firebase-admin";
 import { VideoService } from "./services/video.service";
-import { VideoController } from "./controllers/video.controller";
-import { createVideoRoutes } from "./routes/video.routes";
-import { clerkMiddleware } from "@hono/clerk-auth";
-import { VoiceController } from "./controllers/voice.controller";
-import { createVoiceRoutes } from "./routes/voice.routes";
-import { VoiceService } from "./services/voice.service";
+import { storyboardRoutes } from "./routes/storyboard.routes";
 
 // Load environment variables
 const PORT = process.env.PORT || 6969;
@@ -41,35 +40,44 @@ const videoQueue = new Queue("video-processing", {
 
 // Initialize services
 const videoService = new VideoService(videoQueue);
-const voiceService = new VoiceService();
 
-// Initialize controllers
-const videoController = new VideoController(videoService);
-const voiceController = new VoiceController(voiceService);
+// Initialize Fastify app
+const fastify = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
 
-// Initialize Hono app
-const app = new Hono();
+// Set up Zod validation
+fastify.setValidatorCompiler(validatorCompiler);
+fastify.setSerializerCompiler(serializerCompiler);
 
-// Middleware
-app.use("*", logger());
-app.use("*", clerkMiddleware());
+// Register Clerk plugin globally
+fastify.register(clerkPlugin);
 
-// Health check
-app.get("/health-check", (c) => c.json({ status: "ok" }));
+// Global health check
+fastify.get("/healthcheck", async () => ({ status: "ok" }));
 
 // Register routes
-createVideoRoutes(app, videoController);
-createVoiceRoutes(app, voiceController);
+fastify.register(storyboardRoutes);
 
-// Error handling
-app.onError((err, c) => {
-  console.error("Error:", err);
-  return c.json({ error: "Internal Server Error" }, 500);
+// Global error handling
+fastify.setErrorHandler((error, request, reply) => {
+  console.error("Error:", error);
+  reply.status(500).send({
+    error: "Internal Server Error",
+    message: error.message,
+  });
 });
 
 // Start server
-console.log(`Starting API server on port ${PORT}...`);
-serve({
-  fetch: app.fetch,
-  port: Number(PORT),
-});
+const start = async () => {
+  try {
+    await fastify.listen({
+      port: Number(PORT),
+      host: "0.0.0.0",
+    });
+    console.log(`🚀 Fastify server listening on port ${PORT}`);
+  } catch (error) {
+    fastify.log.error(error);
+    process.exit(1);
+  }
+};
+
+start();
