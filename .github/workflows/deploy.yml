@@ -3,6 +3,13 @@ name: Build and Deploy
 on:
   push:
     branches: [main]
+    paths:
+      - "apps/api/**"
+      - "apps/worker/**"
+      - "apps/bull-board/**"
+      - "packages/shared/**"
+      - "docker-compose.prod.yml"
+      - "scripts/**"
   workflow_dispatch:
 
 env:

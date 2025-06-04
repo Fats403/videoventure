@@ -9,9 +9,18 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "dev:backend": "docker-compose up --build",
+    "dev:backend-detached": "docker-compose up --build -d",
+    "dev:frontend": "turbo run dev --filter=@video-venture/frontend",
+    "dev:fullstack": "concurrently \"npm run dev:backend-detached\" \"npm run dev:frontend\"",
+    "db:generate": "turbo run db:generate --filter=@video-venture/shared",
+    "db:migrate": "turbo run db:migrate --filter=@video-venture/shared",
+    "db:push": "turbo run db:push --filter=@video-venture/shared",
+    "db:studio": "turbo run db:studio --filter=@video-venture/shared"
   },
   "devDependencies": {
-    "turbo": "^1.10.0"
+    "turbo": "^1.10.0",
+    "concurrently": "^8.2.0"
   }
 }
