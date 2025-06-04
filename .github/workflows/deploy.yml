@@ -78,7 +78,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy to server
+      - name: Deploy files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "docker-compose.prod.yml,scripts/deploy.sh"
+          target: "/opt/videoventure/"
+          overwrite: true
+
+      - name: Execute deployment
         uses: appleboy/ssh-action@v1.0.3
         env:
           VERSION: ${{ steps.meta.outputs.version }}
@@ -92,10 +102,11 @@ jobs:
           envs: VERSION,REGISTRY,ORGANIZATION
           script: |
             cd /opt/videoventure
-            # Create the environment variables file directly
+
+            # Create the environment variables file
             echo "TAG=$VERSION" > .env.deploy
             echo "DOCKER_REGISTRY=$REGISTRY/$ORGANIZATION" >> .env.deploy
-            # Make sure the deployment script is executable
+
+            # Make deployment script executable and run it
             chmod +x scripts/deploy.sh
-            # Run the deployment
             ./scripts/deploy.sh

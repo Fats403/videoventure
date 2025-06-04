@@ -1,0 +1,128 @@
+version: "3.8"
+
+services:
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/config:/etc/traefik
+      - ./traefik/letsencrypt:/letsencrypt
+      - ./traefik/auth:/auth
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ADMIN_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.${DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik-dashboard.middlewares=traefik-auth"
+      - "traefik.http.middlewares.traefik-auth.basicauth.usersfile=/auth/users.txt"
+    restart: unless-stopped
+    networks:
+      - web
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - web
+
+  api:
+    image: ${DOCKER_REGISTRY}/videoventure-api:${TAG}
+    container_name: api
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATABASE_URL=${DATABASE_URL}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.${DOMAIN}`)"
+      - "traefik.http.routers.api.entrypoints=websecure"
+      - "traefik.http.routers.api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.api.loadbalancer.server.port=6969"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - web
+
+  worker:
+    image: ${DOCKER_REGISTRY}/videoventure-worker:${TAG}
+    container_name: worker
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AWS_REGION=${AWS_REGION}
+      - DATABASE_URL=${DATABASE_URL}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BEATOVEN_API_KEY=${BEATOVEN_API_KEY}
+      - FAL_API_KEY=${FAL_API_KEY}
+      - WORKER_CONCURRENCY=1
+    volumes:
+      - worker-data:/app/data
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - web
+
+  bull-board:
+    image: ${DOCKER_REGISTRY}/videoventure-bull-board:${TAG}
+    container_name: bull-board
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BULL_BOARD_PORT=3001
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bull-board.rule=Host(`dashboard.${DOMAIN}`)"
+      - "traefik.http.routers.bull-board.entrypoints=websecure"
+      - "traefik.http.routers.bull-board.tls.certresolver=letsencrypt"
+      - "traefik.http.services.bull-board.loadbalancer.server.port=3001"
+      - "traefik.http.routers.bull-board.middlewares=bull-auth"
+      - "traefik.http.middlewares.bull-auth.basicauth.usersfile=/auth/users.txt"
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - web
+
+networks:
+  web:
+    name: web
+    driver: bridge
+
+volumes:
+  redis-data:
+  worker-data:
