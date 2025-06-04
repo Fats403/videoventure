@@ -1,153 +1,234 @@
-import {
-  VideoGenerationJob,
-  VideoProvider,
-} from "./video-providers/video-provider.interface";
-import { AmazonProvider } from "./video-providers/amazon.provider";
-import { FalAiProvider } from "./video-providers/fal-ai.provider";
-import { PROVIDER_MODELS, Scene } from "@video-venture/shared";
+import { fal } from "@fal-ai/client";
+import * as fs from "fs";
+import * as path from "path";
+import { S3Service } from "@video-venture/shared";
+import { getFalModel } from "@video-venture/shared";
+import type { Scene, VideoModel, SettingsData } from "@video-venture/shared";
+
+interface VideoGenerationJob {
+  sceneId: string;
+  sceneOrder: number;
+  requestId: string;
+  s3BucketName: string;
+  s3Key: string;
+  jobId: string;
+  status: "pending" | "processing" | "completed" | "failed";
+  modelId: VideoModel;
+  error?: string;
+}
 
 export class VideoGenerationService {
-  private providers: Map<string, VideoProvider>;
-  private modelToProvider: Map<string, string>;
+  private s3Service: S3Service;
 
   constructor() {
-    // Initialize providers
-    this.providers = new Map();
-    this.providers.set("amazon", new AmazonProvider());
-    this.providers.set("fal-ai", new FalAiProvider());
+    this.s3Service = new S3Service();
 
-    // Create a mapping from model ID to provider
-    this.modelToProvider = new Map();
-    Object.entries(PROVIDER_MODELS).forEach(([modelId, config]) => {
-      this.modelToProvider.set(modelId, config.provider);
-    });
-  }
-
-  /**
-   * Get all available video models with their configurations
-   * @returns Array of model configurations
-   */
-  getAvailableModels() {
-    return Object.entries(PROVIDER_MODELS).map(([id, config]) => ({
-      id,
-      name: config.name,
-      description: config.description,
-      provider: config.provider,
-      capabilities: config.capabilities,
-      defaultConfig: config.defaultConfig,
-    }));
-  }
-
-  /**
-   * Get a specific provider for a model
-   * @param modelId - Model ID
-   * @returns Video provider instance
-   */
-  private getProviderForModel(modelId: string): VideoProvider {
-    const providerId = this.modelToProvider.get(modelId);
-    if (!providerId) {
-      throw new Error(`No provider found for model '${modelId}'`);
+    if (process.env.FAL_API_KEY) {
+      fal.config({
+        credentials: process.env.FAL_API_KEY,
+      });
+    } else {
+      throw new Error("FAL_API_KEY environment variable is required");
     }
-
-    const provider = this.providers.get(providerId);
-    if (!provider) {
-      throw new Error(`Provider '${providerId}' not found`);
-    }
-
-    return provider;
   }
 
   /**
-   * Generate a video for a single scene using the specified model
-   * @param scene - Scene object with visual description
-   * @param s3BucketName - S3 bucket to store the video
-   * @param modelId - ID of the video model to use
-   * @param jobId - Unique ID for this job
-   * @param providerConfig - Provider-specific configuration
-   * @returns Information about the generated video
+   * Generate video for a scene using image-to-video
    */
   async generateSceneVideo(
     scene: Scene,
-    s3BucketName: string,
-    modelId: string,
+    settings: SettingsData,
     jobId: string,
-    providerConfig?: Record<string, any>
+    s3BucketName: string
   ): Promise<VideoGenerationJob> {
-    const provider = this.getProviderForModel(modelId);
-    return provider.generateSceneVideo(
-      scene,
-      s3BucketName,
-      jobId,
-      modelId,
-      providerConfig
+    const { videoModel, aspectRatio } = settings;
+    const falModel = getFalModel(videoModel);
+
+    console.log(
+      `🎬 Generating video for scene ${scene.order + 1} using ${falModel.name}`
     );
+
+    try {
+      // Build the input for the fal.ai model
+      const input = {
+        prompt: scene.imageDescription,
+        image_url: scene.imageUrl,
+        ...falModel.defaultConfig,
+        aspect_ratio: aspectRatio,
+      };
+
+      // Generate S3 path
+      const s3Key = `scenes/${jobId}/scene-${scene.order + 1}/video.mp4`;
+
+      console.log(`📤 Submitting to Fal.ai:`, {
+        model: falModel.id,
+        prompt: scene.imageDescription,
+        image_url: scene.imageUrl,
+      });
+
+      // Submit to Fal.ai
+      const { request_id } = await fal.queue.submit(falModel.id, { input });
+
+      if (!request_id) {
+        throw new Error(`No request ID returned for scene ${scene.order + 1}`);
+      }
+
+      console.log(`✅ Received request ID: ${request_id}`);
+
+      return {
+        sceneId: scene.id,
+        sceneOrder: scene.order,
+        requestId: request_id,
+        s3BucketName,
+        s3Key,
+        jobId,
+        status: "processing",
+        modelId: videoModel,
+      };
+    } catch (error: any) {
+      console.error(
+        `❌ Error generating video for scene ${scene.order + 1}:`,
+        error.message
+      );
+      throw new Error(`Failed to generate video: ${error.message}`);
+    }
   }
 
   /**
-   * Check the status of a video generation job
-   * @param job - Job information object
-   * @returns Updated job information
+   * Check status of video generation job
    */
   async checkJobStatus(job: VideoGenerationJob): Promise<VideoGenerationJob> {
-    const provider = this.getProviderForModel(job.modelId);
-    return provider.checkJobStatus(job);
-  }
+    try {
+      const falModel = getFalModel(job.modelId);
 
-  /**
-   * Poll for video generation job completion
-   * @param jobs - Array of video generation jobs
-   * @param jobId - Current job ID for progress updates
-   * @param updateProgressCallback - Callback function to update progress
-   * @returns Array of completed jobs
-   */
-  async pollVideoJobs(
-    jobs: VideoGenerationJob[],
-    jobId: string,
-    updateProgressCallback?: (progress: number) => Promise<void>
-  ): Promise<VideoGenerationJob[]> {
-    const completedJobs: VideoGenerationJob[] = [];
-    const pendingJobs = [...jobs];
+      const status = await fal.queue.status(falModel.id, {
+        requestId: job.requestId,
+        logs: false,
+      });
 
-    // Poll until all jobs are completed
-    while (pendingJobs.length > 0) {
-      // Wait 10 seconds between polls
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+      let updatedJob = { ...job };
 
-      // Check status of all pending jobs
-      for (let i = pendingJobs.length - 1; i >= 0; i--) {
-        try {
-          const updatedJob = await this.checkJobStatus(pendingJobs[i]);
+      if (status.status === "COMPLETED") {
+        updatedJob.status = "completed";
 
-          // If job is completed, move it to completedJobs
-          if (updatedJob.status === "Completed") {
-            completedJobs.push(updatedJob);
-            pendingJobs.splice(i, 1);
-            console.log(
-              `✅ Scene ${updatedJob.sceneNumber} video generation completed`
-            );
-          } else {
-            // Update the job in the pending array
-            pendingJobs[i] = updatedJob;
-          }
-        } catch (error: any) {
-          console.error(`Error checking job status: ${error.message}`);
-          // Keep the job in pending for now, we'll retry
+        const result = await fal.queue.result(falModel.id, {
+          requestId: job.requestId,
+        });
+
+        if (result.data?.video?.url) {
+          await this.downloadAndUploadVideo(result.data.video.url, job);
+          console.log(
+            `✅ Scene ${job.sceneOrder + 1} video completed and uploaded`
+          );
+        } else {
+          throw new Error("No video URL in result");
+        }
+      } else if (
+        status.status === "IN_PROGRESS" ||
+        status.status === "IN_QUEUE"
+      ) {
+        updatedJob.status = "processing";
+        // Log only status changes to avoid spam
+        if (job.status !== "processing") {
+          console.log(
+            `🔄 Scene ${job.sceneOrder + 1} status: ${status.status}`
+          );
         }
       }
 
-      // Log progress
+      return updatedJob;
+    } catch (error: any) {
+      // Fal.ai throws errors for failed jobs
+      console.error(`❌ Scene ${job.sceneOrder + 1} failed:`, error.message);
+      return {
+        ...job,
+        status: "failed",
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Poll for completion of all video jobs
+   */
+  async pollVideoJobs(
+    jobs: VideoGenerationJob[],
+    onProgress?: (progress: number) => Promise<void>
+  ): Promise<VideoGenerationJob[]> {
+    const completedJobs: VideoGenerationJob[] = [];
+    let pendingJobs = [...jobs];
+
+    console.log(`🔄 Polling ${jobs.length} video generation jobs...`);
+
+    while (pendingJobs.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+
+      const statusChecks = pendingJobs.map((job) => this.checkJobStatus(job));
+      const updatedJobs = await Promise.allSettled(statusChecks);
+
+      for (let i = pendingJobs.length - 1; i >= 0; i--) {
+        const result = updatedJobs[i];
+
+        if (result.status === "fulfilled") {
+          const updatedJob = result.value;
+
+          if (
+            updatedJob.status === "completed" ||
+            updatedJob.status === "failed"
+          ) {
+            completedJobs.push(updatedJob);
+            pendingJobs.splice(i, 1);
+          } else {
+            pendingJobs[i] = updatedJob;
+          }
+        }
+      }
+
       const progress = Math.round((completedJobs.length / jobs.length) * 100);
       console.log(
-        `Video generation progress: ${completedJobs.length}/${jobs.length} scenes completed (${progress}%)`
+        `📊 Video generation progress: ${completedJobs.length}/${jobs.length} (${progress}%)`
       );
 
-      // Call the progress callback if provided
-      if (updateProgressCallback) {
-        await updateProgressCallback(progress);
+      if (onProgress) {
+        await onProgress(progress);
       }
     }
 
-    // Sort completed jobs by scene number
-    return completedJobs.sort((a, b) => a.sceneNumber - b.sceneNumber);
+    return completedJobs.sort((a, b) => a.sceneOrder - b.sceneOrder);
+  }
+
+  /**
+   * Download video from Fal.ai and upload to S3
+   */
+  private async downloadAndUploadVideo(
+    videoUrl: string,
+    job: VideoGenerationJob
+  ): Promise<void> {
+    const tempDir = path.join(process.cwd(), "temp", job.jobId);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+
+    const tempVideoPath = path.join(tempDir, `scene-${job.sceneOrder + 1}.mp4`);
+
+    try {
+      const response = await fetch(videoUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to download video: ${response.statusText}`);
+      }
+
+      const buffer = await response.arrayBuffer();
+      fs.writeFileSync(tempVideoPath, Buffer.from(buffer));
+
+      await this.s3Service.uploadFile(
+        tempVideoPath,
+        job.s3BucketName,
+        job.s3Key
+      );
+      fs.unlinkSync(tempVideoPath);
+    } catch (error: any) {
+      console.error(`Error downloading/uploading video:`, error.message);
+      throw error;
+    }
   }
 }

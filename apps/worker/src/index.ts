@@ -1,17 +1,10 @@
 import * as dotenv from "dotenv";
-import { initializeApp } from "firebase-admin/app";
-import { credential } from "firebase-admin";
 import { Worker } from "bullmq";
 import { VideoPipelineService } from "./services/video-pipeline.service";
 import { Job } from "@video-venture/shared";
 
 // Load environment variables
 dotenv.config();
-
-// Initialize Firebase Admin
-initializeApp({
-  credential: credential.applicationDefault(),
-});
 
 // Initialize the video pipeline service
 const videoPipelineService = new VideoPipelineService();
@@ -36,15 +29,14 @@ const worker = new Worker(
       const jobData = job.data as Job;
       const { jobId, videoId, userId } = jobData;
 
-      // Process the story and generate the video
-      const result = await videoPipelineService.processConcept({
+      // Updated method name
+      await videoPipelineService.processVideo({
         jobId,
         videoId,
         userId,
       });
 
       console.log(`✅ Job ${jobId} completed successfully`);
-      return result;
     } catch (error: any) {
       console.error(`❌ Job ${job.id} failed: ${error.message}`);
       throw error;

@@ -1,21 +1,21 @@
 import { nanoid } from "nanoid";
 import { Queue } from "bullmq";
-import { Firestore, getFirestore } from "firebase-admin/firestore";
 import {
   Job,
-  VideoStatus,
   JobType,
   S3Service,
-  Video,
+  videoProjects,
+  VideoHistory,
+  eq,
+  and,
 } from "@video-venture/shared";
+import { db } from "../db";
 
 export class VideoService {
-  private db: Firestore;
   private videoQueue: Queue;
   private s3Service: S3Service;
 
   constructor(videoQueue: Queue) {
-    this.db = getFirestore();
     this.videoQueue = videoQueue;
     this.s3Service = new S3Service();
   }
@@ -28,46 +28,54 @@ export class VideoService {
    */
   async startVideoJob(userId: string, videoId: string): Promise<Job> {
     // Check if video exists and belongs to user
-    const videoDoc = await this.db.collection("videos").doc(videoId).get();
+    const [videoProject] = await db
+      .select()
+      .from(videoProjects)
+      .where(
+        and(eq(videoProjects.id, videoId), eq(videoProjects.userId, userId))
+      )
+      .limit(1);
 
-    if (!videoDoc.exists) {
-      throw new Error("Video not found");
+    if (!videoProject) {
+      throw new Error("Video not found or unauthorized access");
     }
 
-    const videoData = videoDoc.data() as Video;
-
-    if (videoData.userId !== userId) {
-      throw new Error("Unauthorized access to video");
-    }
-
-    if (videoData.status !== "CREATED") {
+    if (videoProject.status === "generating") {
       throw new Error("Video has already started processing");
     }
 
     const jobId = nanoid();
 
-    // Create job document
+    // Create job object
     const job: Job = {
       jobId,
       videoId,
       userId,
       type: "CREATE_VIDEO" as JobType,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     };
 
-    // Create the job document
-    await this.db.collection("jobs").doc(jobId).set(job);
+    // Create history entry
+    const historyEntry: VideoHistory = {
+      jobId,
+      status: "QUEUED",
+      type: "CREATE_VIDEO",
+      createdAt: new Date(),
+      progress: 0,
+    };
 
-    // Update video document with current job ID and status
-    await this.db
-      .collection("videos")
-      .doc(videoId)
-      .update({
+    // Update video project with job info
+    await db
+      .update(videoProjects)
+      .set({
+        status: "generating",
         currentJobId: jobId,
-        status: "QUEUED" as VideoStatus,
-        updatedAt: new Date().toISOString(),
-      });
+        history: {
+          ...(videoProject.history || {}),
+          [jobId]: historyEntry,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(videoProjects.id, videoId));
 
     // Add job to queue
     await this.videoQueue.add("create-video", job, { jobId });
@@ -87,17 +95,17 @@ export class VideoService {
     videoId: string,
     version: number = 1
   ) {
-    // Get the video document to check if it exists
-    const videoDoc = await this.db.collection("videos").doc(videoId).get();
+    // Check if video exists and belongs to user
+    const [videoProject] = await db
+      .select()
+      .from(videoProjects)
+      .where(
+        and(eq(videoProjects.id, videoId), eq(videoProjects.userId, userId))
+      )
+      .limit(1);
 
-    if (!videoDoc.exists) {
-      throw new Error("Video not found");
-    }
-
-    const videoData = videoDoc.data() as Video;
-
-    if (videoData.userId !== userId) {
-      throw new Error("Unauthorized access to video");
+    if (!videoProject) {
+      throw new Error("Video not found or unauthorized access");
     }
 
     // Generate signed URLs for the main video

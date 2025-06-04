@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { Firestore, getFirestore } from "firebase-admin/firestore";
+import { db } from "../db";
 import { VideoGenerationService } from "./video-generation.service";
 import { AudioService } from "./audio.service";
 import { MusicService } from "./music.service";
@@ -8,13 +8,8 @@ import {
   VideoProcessingService,
   SceneWithAudio,
 } from "./video-processing.service";
-import {
-  JobType,
-  Scene,
-  S3Service,
-  Video,
-  VideoStatus,
-} from "@video-venture/shared";
+import { Scene, S3Service, videoProjects, eq } from "@video-venture/shared";
+import type { ProjectStatus, VideoHistory } from "@video-venture/shared";
 import { SubtitleService } from "./subtitle.service";
 
 export class VideoPipelineService {
@@ -23,10 +18,9 @@ export class VideoPipelineService {
   private musicService: MusicService;
   private videoProcessingService: VideoProcessingService;
   private s3Service: S3Service;
-  private db: Firestore;
+  private subtitleService: SubtitleService;
   private s3BucketName: string;
   private tempDir: string;
-  private subtitleService: SubtitleService;
 
   constructor() {
     this.videoGenerationService = new VideoGenerationService();
@@ -35,27 +29,18 @@ export class VideoPipelineService {
     this.videoProcessingService = new VideoProcessingService();
     this.s3Service = new S3Service();
     this.subtitleService = new SubtitleService();
-    this.db = getFirestore();
     this.s3BucketName = process.env.S3_BUCKET_NAME || "";
     this.tempDir = path.join(process.cwd(), "temp");
 
-    // Ensure temp directory exists
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true });
     }
   }
 
   /**
-   * Process a concept into a video
-   * @param jobId - Unique ID for this job
-   * @param videoId - Unique ID for this video
-   * @param voiceId - ElevenLabs voice ID
-   * @param videoModel - Video model
-   * @param providerConfig - Provider-specific configuration
-   * @param storyboard - User provided storyboard
-   * @returns Job result with video paths
+   * Process a video project
    */
-  async processConcept({
+  async processVideo({
     jobId,
     videoId,
     userId,
@@ -64,102 +49,90 @@ export class VideoPipelineService {
     videoId: string;
     userId: string;
   }): Promise<void> {
-    // Create job-specific directory
+    // Create a temporary directory for the job
     const jobTempDir = path.join(this.tempDir, jobId);
     if (!fs.existsSync(jobTempDir)) {
       fs.mkdirSync(jobTempDir, { recursive: true });
     }
 
-    const video = await this.db.collection("videos").doc(videoId).get();
+    // Fetch project from PostgreSQL
+    const [project] = await db
+      .select()
+      .from(videoProjects)
+      .where(eq(videoProjects.id, videoId))
+      .limit(1);
 
-    if (!video.exists) {
-      throw new Error("No video data found");
+    if (!project) {
+      throw new Error("Video project not found");
     }
 
-    const videoData = video.data() as Video;
-    const { voiceId, videoModel, providerConfig, storyboard } = videoData;
+    if (!project.breakdown?.scenes || !project.settings) {
+      throw new Error("Project missing required breakdown or settings data");
+    }
+
+    const { breakdown, settings, concept } = project;
+    const scenes = breakdown.scenes;
+    const voiceId = concept?.voiceId;
 
     try {
-      // Update progress
-      await this.updateVideoStatus(videoId, "PROCESSING", {
-        currentStep: "Generating scene videos",
-        completedSteps: 1,
-        totalSteps: 12,
-        percentComplete: 8,
-      });
+      // Step 1: Start processing
+      await this.updateProjectStatus(videoId, jobId, "generating", 5);
 
-      // Step 2: Generate videos for each scene in parallel
+      // Step 2: Generate videos for each scene
       const videoJobs = await Promise.all(
-        storyboard.scenes.map((scene) =>
+        scenes.map((scene) =>
           this.videoGenerationService.generateSceneVideo(
             scene,
-            this.s3BucketName,
-            videoModel,
+            settings,
             jobId,
-            providerConfig
+            this.s3BucketName
           )
         )
       );
 
-      // Step 3: Poll for video generation completion
+      // Step 3: Poll for completion
       const completedVideoJobs =
         await this.videoGenerationService.pollVideoJobs(
           videoJobs,
-          jobId,
           async (progress) => {
-            await this.updateVideoStatus(videoId, "PROCESSING", {
-              currentStep: "Generating scene videos",
-              completedSteps: 2,
-              totalSteps: 12,
-              percentComplete: 8 + Math.round(progress * 0.17), // 8-25% range for this step
-            });
+            await this.updateProjectStatus(
+              videoId,
+              jobId,
+              "generating",
+              5 + Math.round(progress * 20)
+            );
           }
         );
 
-      // Update progress
-      await this.updateVideoStatus(videoId, "PROCESSING", {
-        currentStep: "Generating audio for scenes",
-        completedSteps: 3,
-        totalSteps: 12,
-        percentComplete: 25,
-      });
+      await this.updateProjectStatus(videoId, jobId, "generating", 25);
 
-      // Step 4: Generate audio with timestamps
-      const audioPromises = storyboard.scenes.map((scene) =>
-        this.audioService.generateVoiceOverWithTimestamps(
-          scene,
-          jobId,
-          this.tempDir,
-          voiceId
+      // Step 4: Generate audio
+      const audioResults = await Promise.all(
+        scenes.map((scene) =>
+          this.audioService.generateVoiceOverWithTimestamps(
+            scene,
+            jobId,
+            this.tempDir,
+            voiceId
+          )
         )
       );
-      const audioResults = await Promise.all(audioPromises);
-      const audioPaths = audioResults.map((result) => result.audioPath);
 
-      // Update progress
-      await this.updateVideoStatus(videoId, "PROCESSING", {
-        currentStep: "Processing scene videos and audio",
-        completedSteps: 4,
-        totalSteps: 12,
-        percentComplete: 33,
-      });
+      await this.updateProjectStatus(videoId, jobId, "generating", 40);
 
-      // Step 5: Download videos from S3 and prepare scenes
+      // Step 5: Process scenes with audio
       const scenesWithAudio: SceneWithAudio[] = [];
-      const sceneData: Scene[] = [];
 
       for (let i = 0; i < completedVideoJobs.length; i++) {
         const job = completedVideoJobs[i];
-        const scene = storyboard.scenes[i];
-        const sceneNumber = scene.sceneNumber;
+        const scene = scenes[i];
+        const sceneNumber = scene.order + 1;
 
-        // Create scene directory
         const sceneDir = path.join(jobTempDir, `scene-${sceneNumber}`);
         if (!fs.existsSync(sceneDir)) {
           fs.mkdirSync(sceneDir, { recursive: true });
         }
 
-        // Download video
         const videoPath = path.join(sceneDir, `video.mp4`);
         await this.videoProcessingService.downloadVideoFromS3(
           this.s3BucketName,
@@ -167,13 +140,11 @@ export class VideoPipelineService {
           videoPath
         );
 
-        // Get audio path and duration
-        const audioPath = audioPaths[i];
+        const audioPath = audioResults[i].audioPath;
         const audioDuration = await this.audioService.getAudioDuration(
           audioPath
         );
 
-        // Generate S3 paths for this scene
         const scenePaths = this.s3Service.getScenePaths(
           userId,
           videoId,
@@ -181,21 +152,17 @@ export class VideoPipelineService {
           1
         );
 
-        // Upload audio to S3
         await this.s3Service.uploadFile(
           audioPath,
           this.s3BucketName,
           scenePaths.audio
         );
-
-        // Upload video to S3
         await this.s3Service.uploadFile(
           videoPath,
           this.s3BucketName,
           scenePaths.video
         );
 
-        // Add to scenes array
         scenesWithAudio.push({
           sceneNumber,
           videoPath,
@@ -203,39 +170,21 @@ export class VideoPipelineService {
           duration: audioDuration,
           s3Key: scenePaths.video,
         });
-
-        // Add to scene data for the video document
-        sceneData.push({
-          sceneNumber,
-          description: scene.description,
-          voiceover: scene.voiceover,
-          duration: audioDuration,
-          version: 1,
-        });
       }
 
-      // Update progress
-      await this.updateVideoStatus(videoId, "PROCESSING", {
-        currentStep: "Combining audio with videos",
-        completedSteps: 5,
-        totalSteps: 12,
-        percentComplete: 42,
-      });
+      await this.updateProjectStatus(videoId, jobId, "generating", 60);
 
-      // Step 6: Combine audio with videos and add subtitles (for individual scenes)
+      // Step 6: Combine audio with videos and add subtitles
       const combinedScenePaths: string[] = [];
 
       for (let i = 0; i < scenesWithAudio.length; i++) {
         const scene = scenesWithAudio[i];
-        const sceneNumber = scene.sceneNumber;
         const wordTimestamps = audioResults[i].wordTimestamps;
 
-        // First combine audio with video
         const withAudioPath = path.join(
           jobTempDir,
-          `scene-${sceneNumber}-with-audio.mp4`
+          `scene-${scene.sceneNumber}-with-audio.mp4`
         );
-
         await this.videoProcessingService.addAudioToVideo(
           scene.videoPath,
           scene.audioPath,
@@ -244,9 +193,8 @@ export class VideoPipelineService {
 
         const withSubtitlesPath = path.join(
           jobTempDir,
-          `scene-${sceneNumber}-combined.mp4`
+          `scene-${scene.sceneNumber}-combined.mp4`
         );
-
         await this.subtitleService.addSubtitlesToVideo(
           withAudioPath,
           wordTimestamps,
@@ -264,95 +212,63 @@ export class VideoPipelineService {
         combinedScenePaths.push(withSubtitlesPath);
       }
 
-      // Step 7: Combine all scenes with audio and subtitles into one video
-      // Each scene already has properly timed subtitles at this point
+      // Step 7: Combine all scenes
       const finalVideoPath = path.join(jobTempDir, "final_video.mp4");
       await this.videoProcessingService.combineVideos(
         combinedScenePaths,
         finalVideoPath
       );
 
-      // Update progress
-      await this.updateVideoStatus(videoId, "PROCESSING", {
-        currentStep: "Generating background music",
-        completedSteps: 7,
-        totalSteps: 12,
-        percentComplete: 58,
-      });
+      await this.updateProjectStatus(videoId, jobId, "generating", 75);
 
       // Step 8: Generate background music
       const totalDuration = scenesWithAudio.reduce(
         (sum, scene) => sum + scene.duration,
         0
       );
-
       const musicPath = await this.musicService.getBackgroundMusic(
-        "Concept...", // TODO: update this
+        breakdown.musicDescription || "Upbeat background music",
         jobId,
         this.tempDir,
         totalDuration
       );
 
-      // Generate S3 paths for the video
       const videoPaths = this.s3Service.getVideoPaths(userId, videoId, 1);
-
-      // Upload music to S3
       await this.s3Service.uploadFile(
         musicPath,
         this.s3BucketName,
         videoPaths.music
       );
 
-      // Update progress
-      await this.updateVideoStatus(videoId, "PROCESSING", {
-        currentStep: "Adding music to final video",
-        completedSteps: 8,
-        totalSteps: 12,
-        percentComplete: 67,
-      });
+      await this.updateProjectStatus(videoId, jobId, "generating", 85);
 
-      // Step 9: Add background music to final video
+      // Step 9: Add music to final video
       const finalVideoWithMusicPath = path.join(
         jobTempDir,
         "final_video_with_music.mp4"
       );
-
       await this.videoProcessingService.addMusicToVideo(
-        finalVideoPath, // Use the combined video that already has subtitles
+        finalVideoPath,
         musicPath,
         finalVideoWithMusicPath
       );
 
-      // Update progress
-      await this.updateVideoStatus(videoId, "PROCESSING", {
-        currentStep: "Uploading final video",
-        completedSteps: 9,
-        totalSteps: 12,
-        percentComplete: 75,
-      });
+      await this.updateProjectStatus(videoId, jobId, "generating", 90);
 
-      // Step 10: Upload final video to S3
+      // Step 10: Upload final video
       await this.s3Service.uploadFile(
         finalVideoWithMusicPath,
         this.s3BucketName,
         videoPaths.video
       );
 
-      // Update progress
-      await this.updateVideoStatus(videoId, "PROCESSING", {
-        currentStep: "Generating thumbnail",
-        completedSteps: 10,
-        totalSteps: 12,
-        percentComplete: 83,
-      });
-
-      // Step 11: Generate and upload thumbnail
+      // Step 11: Generate thumbnail
       const thumbnailPath = path.join(jobTempDir, "thumbnail.jpg");
       await this.videoProcessingService.generateThumbnail(
         finalVideoWithMusicPath,
         thumbnailPath,
         1,
-        providerConfig?.aspect_ratio || "16:9"
+        settings.aspectRatio
       );
 
       await this.s3Service.uploadFile(
@@ -361,70 +277,146 @@ export class VideoPipelineService {
         videoPaths.thumbnail
       );
 
-      // Update progress
-      await this.updateVideoStatus(videoId, "PROCESSING", {
-        currentStep: "Finalizing video",
-        completedSteps: 11,
-        totalSteps: 12,
-        percentComplete: 92,
-      });
-
-      // Step 12: Update video document in Firestore
-      await this.db
-        .collection("videos")
-        .doc(videoId)
-        .update({
-          videoId,
-          userId,
-          currentJobId: jobId,
-          duration: totalDuration,
-          status: "COMPLETED" as VideoStatus,
-          processingHistory: [
-            {
-              jobId,
-              type: "CREATE_VIDEO" as JobType,
-              status: "COMPLETED" as VideoStatus,
-              timestamp: new Date().toISOString(),
-            },
-          ],
-          updatedAt: new Date().toISOString(),
-        });
-
-      // Update job status to completed
-      await this.updateVideoStatus(videoId, "COMPLETED", {
-        currentStep: "Completed",
-        completedSteps: 12,
-        totalSteps: 12,
-        percentComplete: 100,
-      });
-
-      console.log(`✅ Video ID: ${videoId} pipeline completed successfully`);
-
-      // Clean up temporary files
-      this.cleanupTempDirectory(jobTempDir);
-    } catch (error: any) {
-      console.error("❌ Error in story processing pipeline:", error.message);
-
-      // Update job status to failed
-      await this.updateVideoStatus(
+      // Step 12: Complete the project
+      await this.completeProject(
         videoId,
-        "FAILED",
-        undefined,
-        error.message,
-        jobId
+        jobId,
+        totalDuration,
+        videoPaths.thumbnail
       );
 
-      // Clean up temporary files even if there was an error
+      console.log(`✅ Video project ${videoId} completed successfully`);
       this.cleanupTempDirectory(jobTempDir);
-
+    } catch (error: any) {
+      console.error("❌ Error in video processing pipeline:", error.message);
+      await this.failProject(videoId, jobId, error.message);
+      this.cleanupTempDirectory(jobTempDir);
       throw error;
     }
   }
 
   /**
-   * Clean up temporary directory for a job
-   * @param jobTempDir - Path to job temporary directory
+   * Update project status and progress
    */
+  private async updateProjectStatus(
+    videoId: string,
+    jobId: string,
+    status: ProjectStatus,
+    progress: number
+  ): Promise<void> {
+    const [currentProject] = await db
+      .select()
+      .from(videoProjects)
+      .where(eq(videoProjects.id, videoId))
+      .limit(1);
+
+    if (!currentProject) return;
+
+    const updatedHistory: Record<string, VideoHistory> = {
+      ...currentProject.history,
+      [jobId]: {
+        jobId,
+        status: status === "generating" ? "PROCESSING" : "COMPLETED",
+        type: "CREATE_VIDEO",
+        createdAt: currentProject.history?.[jobId]?.createdAt || new Date(),
+        updatedAt: new Date(),
+        progress,
+      },
+    };
+
+    await db
+      .update(videoProjects)
+      .set({
+        status,
+        history: updatedHistory,
+        updatedAt: new Date(),
+      })
+      .where(eq(videoProjects.id, videoId));
+
+    console.log(`Updated project ${videoId} - ${status} (${progress}%)`);
+  }
+
+  /**
+   * Complete the project
+   */
+  private async completeProject(
+    videoId: string,
+    jobId: string,
+    duration: number,
+    thumbnailUrl: string
+  ): Promise<void> {
+    const [currentProject] = await db
+      .select()
+      .from(videoProjects)
+      .where(eq(videoProjects.id, videoId))
+      .limit(1);
+
+    if (!currentProject) return;
+
+    const updatedHistory: Record<string, VideoHistory> = {
+      ...currentProject.history,
+      [jobId]: {
+        jobId,
+        status: "COMPLETED",
+        type: "CREATE_VIDEO",
+        createdAt: currentProject.history?.[jobId]?.createdAt || new Date(),
+        updatedAt: new Date(),
+        progress: 100,
+      },
+    };
+
+    await db
+      .update(videoProjects)
+      .set({
+        status: "completed",
+        history: updatedHistory,
+        video: {
+          duration,
+          thumbnailUrl,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(videoProjects.id, videoId));
+  }
+
+  /**
+   * Mark project as failed
+   */
+  private async failProject(
+    videoId: string,
+    jobId: string,
+    errorMessage: string
+  ): Promise<void> {
+    const [currentProject] = await db
+      .select()
+      .from(videoProjects)
+      .where(eq(videoProjects.id, videoId))
+      .limit(1);
+
+    if (!currentProject) return;
+
+    const updatedHistory: Record<string, VideoHistory> = {
+      ...currentProject.history,
+      [jobId]: {
+        jobId,
+        status: "FAILED",
+        type: "CREATE_VIDEO",
+        createdAt: currentProject.history?.[jobId]?.createdAt || new Date(),
+        updatedAt: new Date(),
+        errorMessage,
+      },
+    };
+
+    await db
+      .update(videoProjects)
+      .set({
+        status: "failed",
+        history: updatedHistory,
+        updatedAt: new Date(),
+      })
+      .where(eq(videoProjects.id, videoId));
+  }
+
   private cleanupTempDirectory(jobTempDir: string): void {
     try {
       if (fs.existsSync(jobTempDir)) {
@@ -437,58 +429,5 @@ export class VideoPipelineService {
         `Warning: Could not clean up temporary directory: ${error.message}`
       );
     }
-  }
-
-  /**
-   * Update job status in Firestore
-   * @param jobId - Job ID
-   * @param status - New status
-   * @param progress - Optional progress information
-   * @param error - Optional error message
-   */
-  private async updateVideoStatus(
-    videoId: string,
-    status: VideoStatus,
-    progress?: {
-      currentStep: string;
-      completedSteps: number;
-      totalSteps: number;
-      percentComplete: number;
-    },
-    error?: string,
-    jobId?: string
-  ): Promise<void> {
-    const updateData: any = {
-      status,
-      updatedAt: new Date().toISOString(),
-      ...(status === "FAILED"
-        ? {
-            processingHistory: [
-              {
-                jobId,
-                type: "CREATE_VIDEO" as JobType,
-                status: "FAILED" as VideoStatus,
-                timestamp: new Date().toISOString(),
-              },
-            ],
-          }
-        : {}),
-    };
-
-    if (progress) {
-      updateData.progress = progress;
-    }
-
-    if (error) {
-      updateData.error = error;
-    }
-
-    await this.db.collection("videos").doc(videoId).update(updateData);
-
-    console.log(
-      `Updated video ${videoId} status to ${status}${
-        progress ? ` (${progress.percentComplete}%)` : ""
-      }`
-    );
   }
 }

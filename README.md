@@ -1,116 +1,67 @@
 # Video Venture
 
-Video Venture is an AI-powered video generation pipeline that transforms text descriptions into fully produced videos with voiceovers, background music, and seamless transitions.
+AI-powered video generation pipeline that creates videos from text descriptions using multiple AI models.
 
-## Features
+## Overview
 
-- 🎬 AI Video Generation using Amazon Bedrock (Nova Reel)
-- 🗣️ Professional voiceovers using ElevenLabs
-- 🎵 AI-generated background music using Beatoven.ai
-- 📝 AI-driven storyboard generation with GPT-4
-- 🔄 Distributed job processing with BullMQ
-- 📊 Job monitoring dashboard
-- ☁️ Cloud storage with AWS S3
-- 🔥 Firebase integration for data persistence
+Video Venture transforms your ideas into complete videos through an intelligent pipeline:
 
-## Architecture
+1. **Concept** → Describe your video idea
+2. **Storyboard** → AI breaks it into scenes
+3. **Generation** → Creates videos with voiceovers
+4. **Download** → Get your finished video
 
-The system consists of three main services:
+## Tech Stack
 
-1. **API Service**: Handles incoming requests and job management
-2. **Worker Service**: Processes video generation jobs
-3. **Bull Board**: Provides a dashboard for monitoring job queues
+- **Backend**: Node.js + TypeScript monorepo
+- **Database**: PostgreSQL with Drizzle ORM
+- **Queue**: Redis + BullMQ for background jobs
+- **AI**: Fal.ai (video), ElevenLabs (voice), OpenAI (storyboard)
+- **Storage**: AWS S3
 
-### Tech Stack
+## Quick Start
 
-- Node.js & TypeScript
-- Redis for job queues
-- Docker for containerization
-- FFmpeg for video processing
-- AWS Services (S3, Bedrock)
-- Firebase Admin SDK
-- Hono.js for API framework
-
-## Prerequisites
+### Prerequisites
 
 - Node.js 18+
-- Docker and Docker Compose
-- FFmpeg
+- Docker & Docker Compose
+- PostgreSQL
 - Redis
-- AWS Account with S3 and Bedrock access
-- Firebase project with service account
-- API keys for:
-  - ElevenLabs
-  - Beatoven.ai
-  - OpenAI (GPT-4)
 
-## Environment Variables
+### Setup
 
-Create a `.env` file with the following variables:
-
-```env
-# AWS Configuration
-AWS_REGION=your-region
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-S3_BUCKET_NAME=your-bucket-name
-
-# API Keys
-ELEVENLABS_API_KEY=your-elevenlabs-key
-OPENAI_API_KEY=your-openai-key
-BEATOVEN_API_KEY=your-beatoven-key
-
-# Service Configuration
-WORKER_CONCURRENCY=1
-```
-
-## Installation & Setup
-
-1. Clone the repository:
+1. **Clone and install:**
 
 ```bash
-git clone https://github.com/yourusername/video-venture.git
+git clone <your-repo>
 cd video-venture
+npm install
 ```
 
-2. Install dependencies for all services:
+2. **Environment setup:**
 
 ```bash
-cd api && npm install
-cd ../worker && npm install
-cd ../bull-board && npm install
+cp .env.example .env
+# Edit .env with your API keys and database URLs
 ```
 
-3. Place your Firebase service account JSON file in the root directory as `service-account.json`
+3. **Rebuild shared package:**
 
-4. Start the services using Docker Compose:
+```bash
+npx turbo run build --filter=@video-venture/shared
+```
+
+4. **Start with Docker:**
 
 ```bash
 docker compose up --build
 ```
 
-## API Endpoints
+### Services
 
-### Create Video
+- **API**: http://localhost:6969
+- **Bull Board** (job monitoring): http://localhost:3001
 
-```http
-POST /api/videos
-Content-Type: application/json
+# Healthcheck
 
-{
-  "storyIdea": "Your video story concept",
-  "maxScenes": 5,
-  "voiceId": "optional-elevenlabs-voice-id"
-}
-```
-
-### Check Status
-
-```http
-GET /api/videos/:jobId
-```
-
-## Monitoring
-
-Access the Bull Board dashboard at:
-http://localhost:3001/
+curl http://localhost:6969/healthcheck

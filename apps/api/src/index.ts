@@ -6,8 +6,6 @@ import {
   ZodTypeProvider,
 } from "fastify-type-provider-zod";
 import { Queue } from "bullmq";
-import { initializeApp } from "firebase-admin/app";
-import { credential } from "firebase-admin";
 import { VideoService } from "./services/video.service";
 import { storyboardRoutes } from "./routes/storyboard.routes";
 
@@ -15,11 +13,6 @@ import { storyboardRoutes } from "./routes/storyboard.routes";
 const PORT = process.env.PORT || 6969;
 const REDIS_HOST = process.env.REDIS_HOST || "localhost";
 const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379");
-
-// Initialize Firebase Admin
-initializeApp({
-  credential: credential.applicationDefault(),
-});
 
 // Initialize BullMQ queue
 const videoQueue = new Queue("video-processing", {

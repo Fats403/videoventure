@@ -34,8 +34,8 @@ export class AudioService {
     tempDir: string,
     voiceId = "JBFqnCBsd6RMkjVDRZzb"
   ): Promise<string> {
-    const sceneNumber = scene.sceneNumber;
-    const voiceoverText = scene.voiceover;
+    const sceneNumber = scene.order;
+    const voiceoverText = scene.voiceOver;
 
     console.log(`Generating voice over for Scene ${sceneNumber}...`);
 
@@ -94,8 +94,8 @@ export class AudioService {
     tempDir: string,
     voiceId = "JBFqnCBsd6RMkjVDRZzb"
   ): Promise<{ audioPath: string; wordTimestamps: WordTimestamp[] }> {
-    const sceneNumber = scene.sceneNumber;
-    const voiceoverText = scene.voiceover;
+    const sceneNumber = scene.order;
+    const voiceoverText = scene.voiceOver;
 
     console.log(
       `Generating voice over with timestamps for Scene ${sceneNumber}...`

@@ -23,7 +23,6 @@ export class VoiceService {
         page_size: pageSize,
       });
 
-      // Map to include only the required fields
       const voices = response.voices.map((voice) => ({
         voice_id: voice.voice_id,
         name: voice.name,

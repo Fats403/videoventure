@@ -71,3 +71,6 @@ worker-data/
 # AWS credentials
 .aws/
 aws.json
+
+# Turbo cache
+.turbo/

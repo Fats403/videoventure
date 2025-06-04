@@ -241,7 +241,7 @@ export class VideoProcessingService {
   ): Promise<string> {
     const sizes = {
       "16:9": "1280x720",
-      "9:16": "1280x720",
+      "9:16": "720x1280",
       "1:1": "1280x1280",
     };
     return new Promise((resolve, reject) => {
