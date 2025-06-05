@@ -2,7 +2,7 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import { type UseFormReturn } from "react-hook-form";
-import type { CompleteVideoForm, Character } from "@/lib/zod/database";
+import type { CompleteVideoForm } from "@/lib/zod/create-video";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,7 +55,8 @@ import {
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
-
+import type { Character } from "@video-venture/shared";
+import { FAL_VIDEO_MODELS } from "@video-venture/shared";
 const styleCardWidth = 96;
 
 interface SettingsStepProps {
@@ -80,27 +81,6 @@ const aspectRatios = [
     value: "9:16" as const,
     icon: "▯",
     description: "Portrait (TikTok, Stories)",
-  },
-];
-
-const videoModels = [
-  {
-    label: "Standard",
-    value: "standard" as const,
-    description: "Balanced quality and speed",
-    icon: Video,
-  },
-  {
-    label: "Cinematic",
-    value: "cinematic" as const,
-    description: "Higher quality, better lighting",
-    icon: Film,
-  },
-  {
-    label: "Experimental",
-    value: "experimental" as const,
-    description: "Cutting-edge effects",
-    icon: Sparkles,
   },
 ];
 
@@ -303,28 +283,25 @@ export function SettingsStep({ form }: SettingsStepProps) {
                       VIDEO MODEL
                     </FormLabel>
                     <div className="grid grid-cols-1 gap-3">
-                      {videoModels.map((model) => (
+                      {Object.entries(FAL_VIDEO_MODELS).map(([id, model]) => (
                         <Card
-                          key={model.value}
+                          key={id}
                           className={cn(
                             "cursor-pointer p-0 transition-all duration-200 hover:shadow-md",
-                            field.value === model.value
+                            field.value === id
                               ? "border-primary/70 bg-primary/10 shadow-sm"
                               : "hover:border-primary/30 hover:bg-primary/5",
                           )}
-                          onClick={() => field.onChange(model.value)}
+                          onClick={() => field.onChange(id)}
                         >
                           <CardContent className="flex items-center p-4">
-                            <div className="bg-primary/20 mr-3 rounded-full p-2">
-                              <model.icon className="text-primary h-4 w-4" />
-                            </div>
                             <div className="flex-1">
-                              <h3 className="font-medium">{model.label}</h3>
+                              <h3 className="font-medium">{model.name}</h3>
                               <p className="text-muted-foreground text-sm">
                                 {model.description}
                               </p>
                             </div>
-                            {field.value === model.value && (
+                            {field.value === id && (
                               <div className="bg-primary h-2 w-2 rounded-full"></div>
                             )}
                           </CardContent>

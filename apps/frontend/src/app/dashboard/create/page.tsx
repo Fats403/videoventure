@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import {
   completeVideoFormSchema,
   type CompleteVideoForm,
-} from "@/lib/zod/database";
+} from "@/lib/zod/create-video";
 
 // Import step components
 import { ConceptStep } from "@/components/create/ConceptStep";

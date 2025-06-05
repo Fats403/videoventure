@@ -1,10 +1,10 @@
 import { env } from "@/env";
-import type { ConceptData, StoryboardVariant } from "@/lib/zod/database";
+import type { ConceptData, Storyboard } from "@video-venture/shared";
 
 export async function generateStoryboardVariants(
   token: string | null,
   request: ConceptData,
-): Promise<StoryboardVariant[]> {
+): Promise<Storyboard[]> {
   try {
     const response = await fetch(
       `${env.NEXT_PUBLIC_SERVER_API_URL}/storyboard/variants`,
@@ -23,11 +23,11 @@ export async function generateStoryboardVariants(
         `API request failed: ${response.status} ${response.statusText}`,
       );
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const data = (await response.json()) as StoryboardVariant[];
+
+    const data = (await response.json()) as Storyboard[];
     return data;
   } catch (error) {
-    console.error("Failed to generate storyboard variants:", error);
-    throw new Error("Failed to generate storyboard variants");
+    console.error("Failed to generate storyboard", error);
+    throw new Error("Failed to generate storyboard");
   }
 }

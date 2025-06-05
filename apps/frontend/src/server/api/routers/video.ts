@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { videoProjects, eq, desc } from "@video-venture/shared";
-import { TRPCError } from "@trpc/server";
 import {
+  videoProjects,
+  eq,
+  desc,
   conceptDataSchema,
-  createProjectResponseSchema,
-  projectStatusSchema,
-} from "@/lib/zod/database";
+} from "@video-venture/shared";
+import { TRPCError } from "@trpc/server";
+import { createProjectResponseSchema } from "@/lib/zod/create-video";
 import { generateStoryboardVariants } from "@/lib/api/storyboard";
 
 export const videoRouter = createTRPCRouter({
@@ -81,55 +82,5 @@ export const videoRouter = createTRPCRouter({
       }
 
       return project;
-    }),
-
-  // Update project (for any step)
-  updateProject: protectedProcedure
-    .input(
-      z.object({
-        id: z.string(),
-        data: z.object({
-          projectName: z.string().optional(),
-          status: projectStatusSchema.optional(),
-          concept: conceptDataSchema.optional(),
-          storyboard: z.any().optional(),
-          settings: z.any().optional(),
-          breakdown: z.any().optional(),
-          video: z.any().optional(),
-          videoModel: z
-            .enum(["standard", "cinematic", "experimental"])
-            .optional(),
-          aspectRatio: z.enum(["16:9", "1:1", "9:16"]).optional(),
-          duration: z.number().optional(),
-          sceneCount: z.number().optional(),
-        }),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { id, data } = input;
-
-      // Verify ownership
-      const existingProject = await ctx.db.query.videoProjects.findFirst({
-        where: eq(videoProjects.id, id),
-      });
-
-      if (!existingProject || existingProject.userId !== ctx.session.userId) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Project not found",
-        });
-      }
-
-      // Update project
-      const [updatedProject] = await ctx.db
-        .update(videoProjects)
-        .set({
-          ...data,
-          updatedAt: new Date(),
-        })
-        .where(eq(videoProjects.id, id))
-        .returning();
-
-      return updatedProject;
     }),
 });

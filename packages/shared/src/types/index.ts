@@ -1,166 +1,217 @@
-import { VideoModel } from "../config/fal-models";
+import { FAL_VIDEO_MODELS } from "../config/fal-models";
+import { z } from "zod";
 
-export type JobType = "CREATE_VIDEO" | "REGENERATE_SCENE";
+// Enums schemas
+export const jobTypeSchema = z.enum(["CREATE_VIDEO", "REGENERATE_SCENE"]);
+export const projectVisibilitySchema = z.enum(["public", "private"]);
+export const aspectRatioSchema = z.enum(["16:9", "1:1", "9:16"]);
+export const planTypeSchema = z.enum(["starter", "pro", "enterprise"]);
+export const videoStatusSchema = z.enum([
+  "QUEUED",
+  "PROCESSING",
+  "COMPLETED",
+  "FAILED",
+]);
+export const projectStatusSchema = z.enum([
+  "storyboard",
+  "settings",
+  "breakdown",
+  "generating",
+  "completed",
+  "failed",
+]);
+export const videoStyleSchema = z.enum([
+  "none",
+  "boost",
+  "scribble",
+  "filmnoir",
+  "dreamy",
+  "vintage",
+  "neon",
+]);
 
-export type ProjectStatus =
-  | "storyboard"
-  | "settings"
-  | "breakdown"
-  | "generating"
-  | "completed"
-  | "failed";
+// Create the video model schema dynamically from FAL_VIDEO_MODELS
+export const videoModelSchema = z.enum(
+  Object.keys(FAL_VIDEO_MODELS) as [
+    keyof typeof FAL_VIDEO_MODELS,
+    ...Array<keyof typeof FAL_VIDEO_MODELS>,
+  ]
+);
 
-export type ProjectVisibility = "public" | "private";
+export const jobSchema = z.object({
+  jobId: z.string(),
+  videoId: z.string(),
+  userId: z.string(),
+  type: jobTypeSchema,
+});
 
-export type AspectRatio = "16:9" | "1:1" | "9:16";
-export type VideoStyle =
-  | "none"
-  | "boost"
-  | "scribble"
-  | "filmnoir"
-  | "dreamy"
-  | "vintage"
-  | "neon";
+export const userPreferencesSchema = z
+  .object({
+    theme: z.enum(["light", "dark", "system"]).optional(),
+    notifications: z
+      .object({
+        email: z.boolean(),
+        marketing: z.boolean(),
+      })
+      .optional(),
+    defaultVideoModel: z
+      .enum(["standard", "cinematic", "experimental"])
+      .optional(),
+    defaultAspectRatio: z.enum(["16:9", "1:1", "9:16"]).optional(),
+    autoSaveEnabled: z.boolean().default(false),
+  })
+  .optional();
 
-export type PlanType = "starter" | "pro" | "enterprise";
-
-// User preferences interface
-export interface UserPreferences {
-  theme?: "light" | "dark" | "system";
-  notifications?: {
-    email: boolean;
-    marketing: boolean;
-  };
-  defaultVideoModel?: VideoModel;
-  defaultAspectRatio?: AspectRatio;
-  autoSaveEnabled?: boolean;
-}
-
-// Concept data interface
-export interface ConceptData {
-  option: "ai" | "script";
-  content: string;
-  format: "custom" | "shortFilm" | "commercial";
-  customFormat?: string;
-  genre?: string;
-  tone?: string;
-  voiceId?: string;
+// Concept data schema
+export const conceptDataSchema = z.object({
+  option: z.enum(["ai", "script"]),
+  content: z.string().min(10, "Content must be at least 10 characters"),
+  format: z.enum(["custom", "shortFilm", "commercial"]),
+  customFormat: z.string().optional(),
+  genre: z.string().optional(),
+  tone: z.string().optional(),
+  voiceId: z.string().optional(),
   // Commercial-specific fields
-  commercialTargetAudience?: string;
-  commercialMessage?: string;
-  commercialBrand?: string;
-  commercialCallToAction?: string;
-}
+  commercialTargetAudience: z.string().optional(),
+  commercialMessage: z.string().optional(),
+  commercialBrand: z.string().optional(),
+  commercialCallToAction: z.string().optional(),
+});
 
-// Storyboard variant interface
-export interface StoryboardVariant {
-  id: string;
-  title: string;
-  description: string;
-  tags: string[];
-  content: string;
-}
+// Storyboard variant schema
+export const storyboardSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  tags: z.array(z.string()),
+  content: z.string(),
+});
 
-// Storyboard data interface
-export interface StoryboardData {
-  selectedVariantId?: string;
-  variants: StoryboardVariant[];
-  customContent?: string;
-}
+// Storyboard data schema
+export const storyboardDataSchema = z.object({
+  selectedVariantId: z.string().optional(),
+  variants: z.array(storyboardSchema),
+  customContent: z.string().optional(),
+});
 
-// Video history for tracking job progress
-export interface VideoHistory {
-  jobId: string;
-  status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
-  type: JobType;
-  createdAt: Date;
-  updatedAt?: Date;
-  errorMessage?: string;
-  sceneId?: string;
-  progress?: number; // 0-100
-}
+// Character schema
+export const characterSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, "Character name is required"),
+  description: z.string().optional(),
+  image: z.string().optional(),
+  appearance: z.string().optional(),
+  clothing: z.string().optional(),
+  voice: z.string().optional(),
+  age: z.string().optional(),
+});
 
-export interface Scene {
-  id: string;
-  imageUrl: string;
-  imageDescription: string;
-  voiceOver: string;
-  order: number;
-  duration?: number;
-}
+// Settings data schema
+export const settingsDataSchema = z.object({
+  projectName: z.string().min(1, "Project name is required"),
+  videoModel: videoModelSchema,
+  aspectRatio: z.enum(["16:9", "1:1", "9:16"]),
+  videoStyle: z
+    .enum([
+      "none",
+      "boost",
+      "scribble",
+      "filmnoir",
+      "dreamy",
+      "vintage",
+      "neon",
+    ])
+    .optional(),
+  cinematicInspiration: z.string().optional(),
+  characters: z.array(characterSchema),
+});
 
-export interface Character {
-  id: string;
-  name: string;
-  description?: string;
-  image?: string;
-  appearance?: string;
-  clothing?: string;
-  voice?: string;
-  age?: string;
-}
+// Scene schema
+export const sceneSchema = z.object({
+  id: z.string(),
+  imageUrl: z.string().url("Invalid image URL"),
+  imageDescription: z.string().min(1, "Image description is required"),
+  voiceOver: z.string().min(1, "Voice over is required"),
+  duration: z.number().min(1, "Duration must be at least 1 second").optional(),
+  order: z.number().min(0),
+});
 
-// Breakdown data (what the worker needs)
-export interface BreakdownData {
-  scenes: Scene[];
-  musicDescription?: string;
-}
+// Breakdown data schema
+export const breakdownDataSchema = z.object({
+  scenes: z.array(sceneSchema),
+  musicDescription: z.string().optional(),
+});
 
-// Settings data
-export interface SettingsData {
-  projectName: string;
-  videoModel: VideoModel;
-  aspectRatio: AspectRatio;
-  videoStyle?: VideoStyle;
-  cinematicInspiration?: string;
-  characters: Character[];
-}
+// Video data schema
+export const videoDataSchema = z.object({
+  thumbnailUrl: z.string().url().optional(),
+  duration: z.number().min(0).optional(),
+  fileSize: z.number().min(0).optional(),
+});
 
-// Video data (final output)
-export interface VideoData {
-  thumbnailUrl?: string;
-  duration?: number;
-  fileSize?: number;
-}
+export const videoHistorySchema = z.object({
+  jobId: z.string(),
+  status: videoStatusSchema,
+  type: jobTypeSchema,
+  createdAt: z.date(),
+  updatedAt: z.date().optional(),
+  errorMessage: z.string().optional(),
+  sceneId: z.string().optional(),
+  progress: z.number().min(0).max(100).optional(),
+});
 
-// Job interface for BullMQ
-export interface Job {
-  jobId: string;
-  videoId: string;
-  userId: string;
-  type: JobType;
-}
+// User schema (for API validation)
+export const userSchema = z.object({
+  id: z.string(),
+  email: z.string().email(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  imageUrl: z.string().url().optional(),
+  preferences: userPreferencesSchema,
+  planType: planTypeSchema,
+  videoCredits: z.number().min(0),
+  createdAt: z.date(),
+  updatedAt: z.date().optional(),
+});
 
-// User interface
-export interface User {
-  id: string;
-  email: string;
-  firstName?: string;
-  lastName?: string;
-  imageUrl?: string;
-  preferences?: UserPreferences;
-  planType: PlanType;
-  videoCredits: number;
-  createdAt: Date;
-  updatedAt?: Date;
-}
+// Video project schema (for API validation)
+export const videoProjectSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  projectName: z.string().optional(),
+  status: projectStatusSchema,
+  concept: conceptDataSchema.optional(),
+  storyboard: storyboardDataSchema.optional(),
+  settings: settingsDataSchema.optional(),
+  breakdown: breakdownDataSchema.optional(),
+  video: videoDataSchema.optional(),
+  currentJobId: z.string().optional(),
+  history: z.record(z.string(), videoHistorySchema).optional(),
+  views: z.number().min(0).default(0),
+  version: z.number().min(0).default(1),
+  visibility: projectVisibilitySchema,
+  createdAt: z.date(),
+  updatedAt: z.date().optional(),
+});
 
-// Video project interface
-export interface VideoProject {
-  id: string;
-  userId: string;
-  projectName?: string;
-  status: ProjectStatus;
-  currentJobId?: string;
-  history?: Record<string, VideoHistory>;
-  views: number;
-  version: number;
-  visibility: ProjectVisibility;
-  concept?: ConceptData;
-  storyboard?: StoryboardData;
-  breakdown?: BreakdownData;
-  settings?: SettingsData;
-  video?: VideoData;
-  createdAt: Date;
-  updatedAt: Date;
-}
+// Export inferred types
+export type UserPreferences = z.infer<typeof userPreferencesSchema>;
+export type ConceptData = z.infer<typeof conceptDataSchema>;
+export type Storyboard = z.infer<typeof storyboardSchema>;
+export type StoryboardData = z.infer<typeof storyboardDataSchema>;
+export type Character = z.infer<typeof characterSchema>;
+export type SettingsData = z.infer<typeof settingsDataSchema>;
+export type Scene = z.infer<typeof sceneSchema>;
+export type BreakdownData = z.infer<typeof breakdownDataSchema>;
+export type VideoData = z.infer<typeof videoDataSchema>;
+export type VideoHistory = z.infer<typeof videoHistorySchema>;
+export type ProjectVisibility = z.infer<typeof projectVisibilitySchema>;
+export type ProjectStatus = z.infer<typeof projectStatusSchema>;
+export type VideoModel = z.infer<typeof videoModelSchema>;
+export type AspectRatio = z.infer<typeof aspectRatioSchema>;
+export type VideoStyle = z.infer<typeof videoStyleSchema>;
+export type PlanType = z.infer<typeof planTypeSchema>;
+export type JobType = z.infer<typeof jobTypeSchema>;
+export type User = z.infer<typeof userSchema>;
+export type VideoProject = z.infer<typeof videoProjectSchema>;
+export type Job = z.infer<typeof jobSchema>;

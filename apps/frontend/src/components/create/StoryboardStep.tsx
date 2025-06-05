@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { type UseFormReturn } from "react-hook-form";
-import type { CompleteVideoForm } from "@/lib/zod/database";
+import type { CompleteVideoForm } from "@/lib/zod/create-video";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RefreshCw, FileText, Edit3, Sparkles, Tag } from "lucide-react";

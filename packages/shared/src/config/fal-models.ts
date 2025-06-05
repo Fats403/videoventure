@@ -10,7 +10,7 @@ export interface FalVideoModel {
   defaultConfig: Record<string, any>;
 }
 
-export const FAL_VIDEO_MODELS = {
+export const FAL_VIDEO_MODELS: Record<string, FalVideoModel> = {
   "kling-1.6": {
     id: "fal-ai/kling-video/v1.6/standard/text-to-video",
     name: "Kling 1.6",
@@ -53,8 +53,7 @@ export const FAL_VIDEO_MODELS = {
   },
 } as const;
 
-// Create VideoModel type from the keys
-export type VideoModel = keyof typeof FAL_VIDEO_MODELS;
+type VideoModel = keyof typeof FAL_VIDEO_MODELS;
 
 export function getFalModel(modelId: VideoModel): FalVideoModel {
   const model = FAL_VIDEO_MODELS[modelId];

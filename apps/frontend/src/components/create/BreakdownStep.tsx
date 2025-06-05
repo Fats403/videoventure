@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { type UseFormReturn } from "react-hook-form";
-import type { CompleteVideoForm, Scene } from "@/lib/zod/database";
+import type { CompleteVideoForm } from "@/lib/zod/create-video";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
+import type { Scene } from "@video-venture/shared";
 
 interface BreakdownStepProps {
   form: UseFormReturn<CompleteVideoForm>;

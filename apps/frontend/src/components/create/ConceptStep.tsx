@@ -32,7 +32,7 @@ import { SelectionCard } from "@/components/ui/selection-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type UseFormReturn } from "react-hook-form";
 import { motion, AnimatePresence } from "framer-motion";
-import type { CompleteVideoForm } from "@/lib/zod/database";
+import type { CompleteVideoForm } from "@/lib/zod/create-video";
 
 interface ConceptStepProps {
   form: UseFormReturn<CompleteVideoForm>;
@@ -362,7 +362,7 @@ export function ConceptStep({ form }: ConceptStepProps) {
 
                 <FormField
                   control={form.control}
-                  name="concept.voiceActor"
+                  name="concept.voiceId"
                   render={({ field }) => (
                     <FormItem className="w-full">
                       <FormLabel className="text-sm font-medium">
