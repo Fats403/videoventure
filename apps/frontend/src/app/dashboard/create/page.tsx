@@ -1,4 +1,3 @@
-// src/app/dashboard/create/page.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -41,7 +40,7 @@ export default function CreatePage() {
         customFormat: "",
         genre: "",
         tone: "",
-        voiceActor: "",
+        voiceId: "",
         commercialTargetAudience: "",
         commercialMessage: "",
         commercialBrand: "",
@@ -64,16 +63,12 @@ export default function CreatePage() {
         scenes: [],
         musicDescription: "",
       },
-      // Project metadata
-      projectId: "",
-      projectName: "",
     },
   });
 
   const createProjectMutation = api.video.create.useMutation({
     onSuccess: (data) => {
-      // Update the form with the response data
-      form.setValue("projectId", data.projectId);
+      // TODO: Set the projectId as a query param?
       form.setValue("storyboard.variants", data.storyboardVariants);
 
       setCurrentStep(1);
