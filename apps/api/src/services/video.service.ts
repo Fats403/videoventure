@@ -1,14 +1,12 @@
 import { nanoid } from "nanoid";
 import { Queue } from "bullmq";
+import { Job, JobType, VideoHistory } from "@video-venture/shared";
 import {
-  Job,
-  JobType,
   S3Service,
   videoProjects,
-  VideoHistory,
   eq,
   and,
-} from "@video-venture/shared";
+} from "@video-venture/shared/server";
 import { db } from "../db";
 
 export class VideoService {

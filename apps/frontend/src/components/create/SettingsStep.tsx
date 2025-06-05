@@ -15,10 +15,7 @@ import {
   Edit,
   Settings,
   Users,
-  Video,
   Palette,
-  Film,
-  Sparkles,
   Upload,
   X,
   Camera,
@@ -57,6 +54,7 @@ import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Character } from "@video-venture/shared";
 import { FAL_VIDEO_MODELS } from "@video-venture/shared";
+
 const styleCardWidth = 96;
 
 interface SettingsStepProps {

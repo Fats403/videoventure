@@ -8,7 +8,7 @@ import {
   VideoProcessingService,
   SceneWithAudio,
 } from "./video-processing.service";
-import { Scene, S3Service, videoProjects, eq } from "@video-venture/shared";
+import { S3Service, videoProjects, eq } from "@video-venture/shared/server";
 import type { ProjectStatus, VideoHistory } from "@video-venture/shared";
 import { SubtitleService } from "./subtitle.service";
 
@@ -141,9 +141,8 @@ export class VideoPipelineService {
         );
 
         const audioPath = audioResults[i].audioPath;
-        const audioDuration = await this.audioService.getAudioDuration(
-          audioPath
-        );
+        const audioDuration =
+          await this.audioService.getAudioDuration(audioPath);
 
         const scenePaths = this.s3Service.getScenePaths(
           userId,

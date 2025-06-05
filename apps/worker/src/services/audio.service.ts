@@ -4,7 +4,6 @@ import { ElevenLabsClient } from "elevenlabs";
 import ffmpeg from "fluent-ffmpeg";
 import { Scene } from "@video-venture/shared";
 
-// Define interface for word-level timestamps
 export interface WordTimestamp {
   word: string;
   start: number; // in seconds

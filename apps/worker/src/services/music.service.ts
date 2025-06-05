@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { OpenAI } from "openai";
 import { fal } from "@fal-ai/client";
-import { Readable } from "stream"; // Needed for fetch response stream
+import { Readable } from "stream";
 
 // Define available music providers
 export type MusicProvider = "beatoven" | "fal";

@@ -1,11 +1,7 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import {
-  videoProjects,
-  eq,
-  desc,
-  conceptDataSchema,
-} from "@video-venture/shared";
+import { conceptDataSchema } from "@video-venture/shared";
+import { videoProjects, eq, desc } from "@video-venture/shared/server";
 import { TRPCError } from "@trpc/server";
 import { createProjectResponseSchema } from "@/lib/zod/create-video";
 import { generateStoryboardVariants } from "@/lib/api/storyboard";

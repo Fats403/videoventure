@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import ffmpeg from "fluent-ffmpeg";
-import { S3Service } from "@video-venture/shared";
+import { S3Service } from "@video-venture/shared/server";
 import { blendVideos, type TransitionType } from "ffmpeg-transitions";
 
 export interface SceneWithAudio {

@@ -1,7 +1,7 @@
 import { fal } from "@fal-ai/client";
 import * as fs from "fs";
 import * as path from "path";
-import { S3Service } from "@video-venture/shared";
+import { S3Service } from "@video-venture/shared/server";
 import { getFalModel } from "@video-venture/shared";
 import type { Scene, VideoModel, SettingsData } from "@video-venture/shared";
 

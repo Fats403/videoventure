@@ -1,4 +1,4 @@
-import { createDatabase } from "@video-venture/shared";
+import { createDatabase } from "@video-venture/shared/server";
 import { env } from "@/env";
 
 const globalForDb = globalThis as unknown as {
