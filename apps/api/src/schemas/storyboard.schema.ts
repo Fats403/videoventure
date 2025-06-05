@@ -36,5 +36,6 @@ export const StoryboardCreationResponseSchema = z.array(
 );
 
 // Infer types
+export type StoryboardLLMResponse = z.infer<typeof StoryboardLLMResponseSchema>;
 export type StoryboardRequest = z.infer<typeof StoryboardRequestSchema>;
 export type StoryboardResponse = z.infer<typeof StoryboardResponseSchema>;

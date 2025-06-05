@@ -10,6 +10,7 @@ import {
   StoryboardRequest,
   StoryboardResponse,
   StoryboardLLMResponseSchema,
+  StoryboardLLMResponse,
 } from "../schemas/storyboard.schema";
 
 export class StoryboardService {
@@ -39,27 +40,24 @@ REQUIREMENTS:
 6. For commercials, ensure each variant incorporates the brand message and call-to-action naturally
 
 OUTPUT FORMAT (JSON only, no other text):
-{
-  "variants": [
-    {
-      "title": "Creative Title 1",
-      "description": "Brief description of this approach",
-      "tags": ["tag1", "tag2", "tag3"],
-      "content": "High-level story outline: Opening -> Development -> Conclusion"
-    },
-    // ... ${variantCount} total variants
-  ]
-}`;
-
+[
+  {
+    "title": "Creative Title 1",
+    "description": "Brief description of this approach",
+    "tags": ["tag1", "tag2", "tag3"],
+    "content": "High-level story outline: Opening -> Development -> Conclusion"
+  },
+  // ... ${variantCount} total variants
+]`;
     return { role: "system", parts: [{ text: promptText }] };
   }
 
   private async callGeminiAPI(
     systemInstruction: Content,
     userPrompt: string
-  ): Promise<any> {
+  ): Promise<StoryboardLLMResponse> {
     const generationConfig: GenerationConfig = {
-      temperature: 0.8, // Higher creativity for variants
+      temperature: 0.8,
       responseMimeType: "application/json",
     };
 
@@ -95,18 +93,60 @@ OUTPUT FORMAT (JSON only, no other text):
     while (attempts < this.maxAttempts) {
       attempts++;
       try {
+        // Get the raw response
         const result = await model.generateContent(userPrompt);
         const responseText = result.response.text();
-        return JSON.parse(responseText);
+
+        // Parse JSON
+        let parsedResponse;
+        try {
+          parsedResponse = JSON.parse(responseText);
+        } catch (jsonError) {
+          throw new Error(
+            `Invalid JSON response: ${jsonError instanceof Error ? jsonError.message : "Unknown JSON error"}`
+          );
+        }
+
+        // Validate schema
+        const validationResult =
+          StoryboardLLMResponseSchema.safeParse(parsedResponse);
+
+        if (!validationResult.success) {
+          console.warn(
+            `🔄 Attempt ${attempts} - Schema validation failed:`,
+            validationResult.error.message
+          );
+          console.warn(`📄 Response that failed validation:`, parsedResponse);
+          throw new Error(
+            `Schema validation failed: ${validationResult.error.message}`
+          );
+        }
+
+        // Success! Return the validated data
+        console.log(
+          `✅ Attempt ${attempts} - Successfully generated and validated response`
+        );
+        return validationResult.data;
       } catch (error: any) {
         lastError = error;
-        console.warn(`Gemini API attempt ${attempts} failed:`, error.message);
+        console.warn(
+          `🔄 Gemini API attempt ${attempts} failed:`,
+          error.message
+        );
+
         if (attempts < this.maxAttempts) {
+          console.log(`⏳ Retrying in ${1000 * attempts}ms...`);
           await new Promise((resolve) => setTimeout(resolve, 1000 * attempts));
         }
       }
     }
-    throw lastError ?? new Error("Failed to generate storyboard variants");
+
+    throw (
+      lastError ??
+      new Error(
+        "Failed to generate valid storyboard variants after all attempts"
+      )
+    );
   }
 
   /**
@@ -120,20 +160,13 @@ OUTPUT FORMAT (JSON only, no other text):
     const systemInstruction = this.buildSystemPrompt(2);
     const userPrompt = this.buildUserPrompt(conceptData);
 
-    const response = await this.callGeminiAPI(systemInstruction, userPrompt);
-
-    const validationResult = StoryboardLLMResponseSchema.safeParse(response);
-
-    if (!validationResult.success) {
-      console.error("❌ Validation failed:", validationResult.error.message);
-      console.error("📄 Response that failed validation:", response);
-      throw new Error(
-        `Invalid response format: ${validationResult.error.message}`
-      );
-    }
+    const validatedVariants = await this.callGeminiAPI(
+      systemInstruction,
+      userPrompt
+    );
 
     // Add unique IDs to variants
-    return validationResult.data.map((variant, index) => ({
+    return validatedVariants.map((variant, index) => ({
       ...variant,
       id: `variant-${Date.now()}-${index}`,
     }));
@@ -152,16 +185,12 @@ OUTPUT FORMAT (JSON only, no other text):
       this.buildUserPrompt(conceptData) +
       "\n\nCreate a unique variant that offers a fresh perspective different from typical approaches.";
 
-    const response = await this.callGeminiAPI(systemInstruction, userPrompt);
-    const validationResult = StoryboardLLMResponseSchema.safeParse(response);
+    const validatedVariants = await this.callGeminiAPI(
+      systemInstruction,
+      userPrompt
+    );
 
-    if (!validationResult.success) {
-      throw new Error(
-        `Invalid response format: ${validationResult.error.message}`
-      );
-    }
-
-    const variant = validationResult.data[0];
+    const variant = validatedVariants[0];
     if (!variant) {
       throw new Error("No variant generated");
     }
