@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   Upload,
   Wand,
@@ -11,6 +11,9 @@ import {
   MessageSquare,
   Building,
   Target,
+  Play,
+  Pause,
+  Volume2,
 } from "lucide-react";
 import {
   FormControl,
@@ -30,9 +33,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { SelectionCard } from "@/components/ui/selection-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { type UseFormReturn } from "react-hook-form";
 import { motion, AnimatePresence } from "framer-motion";
 import type { CompleteVideoForm } from "@/lib/zod/create-video";
+import { api } from "@/trpc/react";
+import { cn } from "@/lib/utils";
 
 interface ConceptStepProps {
   form: UseFormReturn<CompleteVideoForm>;
@@ -40,6 +46,93 @@ interface ConceptStepProps {
 
 export function ConceptStep({ form }: ConceptStepProps) {
   const selectedFormat = form.watch("concept.format");
+  const selectedVoiceId = form.watch("concept.voiceId");
+  const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const { data: voicesData, isLoading: voicesLoading } =
+    api.voice.getVoices.useQuery(
+      { pageSize: 50 },
+      {
+        staleTime: 1000 * 60 * 60, // 1 hour
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
+        refetchOnReconnect: false,
+      },
+    );
+
+  // Get the selected voice data
+  const selectedVoice = voicesData?.voices.find(
+    (voice) => voice.voice_id === selectedVoiceId,
+  );
+
+  // Handle audio play/pause with proper cleanup
+  const handlePlayToggle = useCallback(
+    (voiceId: string, previewUrl?: string, event?: React.MouseEvent) => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+
+      if (!previewUrl) return;
+
+      // If same voice is playing, pause it
+      if (currentPlayingId === voiceId) {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current = null;
+        }
+        setCurrentPlayingId(null);
+        return;
+      }
+
+      // Stop any currently playing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+
+      // Start new audio
+      try {
+        const audio = new Audio(previewUrl);
+        audioRef.current = audio;
+
+        audio.addEventListener("ended", () => {
+          setCurrentPlayingId(null);
+          audioRef.current = null;
+        });
+
+        audio.addEventListener("error", () => {
+          setCurrentPlayingId(null);
+          audioRef.current = null;
+        });
+
+        audio
+          .play()
+          .then(() => {
+            setCurrentPlayingId(voiceId);
+          })
+          .catch((error) => {
+            console.error("Error playing audio:", error);
+            setCurrentPlayingId(null);
+            audioRef.current = null;
+          });
+      } catch (error) {
+        console.error("Error creating audio:", error);
+      }
+    },
+    [currentPlayingId],
+  );
+
+  // Cleanup audio on unmount
+  React.useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -368,29 +461,75 @@ export function ConceptStep({ form }: ConceptStepProps) {
                       <FormLabel className="text-sm font-medium">
                         VOICE ACTOR
                       </FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger className="focus-visible:border-primary/50 focus-visible:ring-primary/30 w-full border-2">
-                            <SelectValue placeholder="Select voice" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="male1">Male Voice 1</SelectItem>
-                          <SelectItem value="male2">Male Voice 2</SelectItem>
-                          <SelectItem value="female1">
-                            Female Voice 1
-                          </SelectItem>
-                          <SelectItem value="female2">
-                            Female Voice 2
-                          </SelectItem>
-                          <SelectItem value="neutral">
-                            Gender Neutral
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="flex gap-2">
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          disabled={voicesLoading}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="focus-visible:border-primary/50 focus-visible:ring-primary/30 flex-1 border-2">
+                              <SelectValue
+                                placeholder={
+                                  voicesLoading
+                                    ? "Loading voices..."
+                                    : "Select voice"
+                                }
+                              />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent className="max-h-60">
+                            {voicesData?.voices.map((voice) => {
+                              const isPlaying =
+                                currentPlayingId === voice.voice_id;
+                              return (
+                                <SelectItem
+                                  key={voice.voice_id}
+                                  value={voice.voice_id}
+                                  className="flex items-center justify-between p-3"
+                                >
+                                  <div className="flex w-full items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Volume2 className="text-muted-foreground h-4 w-4" />
+                                      <span>{voice.name}</span>
+                                    </div>
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
+                            {!voicesLoading &&
+                              (!voicesData?.voices ||
+                                voicesData.voices.length === 0) && (
+                                <SelectItem value="" disabled>
+                                  No voices available
+                                </SelectItem>
+                              )}
+                          </SelectContent>
+                        </Select>
+
+                        {/* Play button for selected voice */}
+                        {selectedVoice?.preview_url && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="shrink-0"
+                            onClick={(e) =>
+                              handlePlayToggle(
+                                selectedVoice.voice_id,
+                                selectedVoice.preview_url,
+                                e,
+                              )
+                            }
+                          >
+                            {currentPlayingId === selectedVoice.voice_id ? (
+                              <Pause className="h-4 w-4" />
+                            ) : (
+                              <Play className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

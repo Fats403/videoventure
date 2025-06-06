@@ -23,11 +23,14 @@ export class VoiceService {
         page_size: pageSize,
       });
 
-      const voices = response.voices.map((voice) => ({
-        voice_id: voice.voice_id,
-        name: voice.name,
-        preview_url: voice.preview_url,
-      }));
+      // Filter out voices without names and map to our expected format
+      const voices = response.voices
+        .filter((voice) => voice.name && voice.voice_id) // Only include voices with valid name and id
+        .map((voice) => ({
+          voice_id: voice.voice_id,
+          name: voice.name!,
+          preview_url: voice.preview_url || undefined,
+        }));
 
       return {
         voices,

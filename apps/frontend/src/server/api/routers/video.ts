@@ -4,7 +4,8 @@ import { conceptDataSchema } from "@video-venture/shared";
 import { videoProjects, eq, desc } from "@video-venture/shared/server";
 import { TRPCError } from "@trpc/server";
 import { createProjectResponseSchema } from "@/lib/zod/create-video";
-import { generateStoryboardVariants } from "@/lib/api/storyboard";
+import { env } from "@/env";
+import type { ConceptData, Storyboard } from "@video-venture/shared";
 
 export const videoRouter = createTRPCRouter({
   // Create a new video project with storyboard generation
@@ -14,10 +15,28 @@ export const videoRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       try {
         const token = await ctx.session.getToken();
-        const storyboardVariants = await generateStoryboardVariants(
-          token,
-          input,
+
+        // Generate storyboard variants inline
+        const storyboardResponse = await fetch(
+          `${env.NEXT_PUBLIC_SERVER_API_URL}/storyboard/variants`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(input),
+          },
         );
+
+        if (!storyboardResponse.ok) {
+          throw new Error(
+            `Storyboard API request failed: ${storyboardResponse.status} ${storyboardResponse.statusText}`,
+          );
+        }
+
+        const storyboardVariants =
+          (await storyboardResponse.json()) as Storyboard[];
 
         console.log(storyboardVariants);
 

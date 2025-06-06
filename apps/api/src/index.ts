@@ -1,4 +1,6 @@
 import "zod-openapi/extend";
+import { z } from "zod";
+import { type ZodOpenApiVersion } from "zod-openapi";
 import Fastify from "fastify";
 import { clerkPlugin } from "@clerk/fastify";
 import {
@@ -12,8 +14,7 @@ import {
 import { Queue } from "bullmq";
 import { VideoService } from "./services/video.service";
 import { storyboardRoutes } from "./routes/storyboard.routes";
-import { z } from "zod";
-import { type ZodOpenApiVersion } from "zod-openapi";
+import { voiceRoutes } from "./routes/voice.routes";
 
 // Load environment variables
 const PORT = process.env.PORT || 6969;
@@ -81,6 +82,10 @@ const start = async () => {
             description: "Storyboard generation endpoints",
           },
           {
+            name: "Voice",
+            description: "Voice and text-to-speech endpoints",
+          },
+          {
             name: "Health",
             description: "Health check endpoints",
           },
@@ -126,6 +131,7 @@ const start = async () => {
 
       // Register protected routes
       await instance.register(storyboardRoutes);
+      await instance.register(voiceRoutes);
     });
 
     // Global error handling
