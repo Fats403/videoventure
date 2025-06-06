@@ -15,6 +15,8 @@ const GetVoicesResponseSchema = z.object({
   total_count: z.number(),
 });
 
+type GetVoicesResponse = z.infer<typeof GetVoicesResponseSchema>;
+
 export const voiceRouter = createTRPCRouter({
   // Get available voices from ElevenLabs
   getVoices: protectedProcedure
@@ -43,7 +45,7 @@ export const voiceRouter = createTRPCRouter({
           );
         }
 
-        const data = await response.json();
+        const data = (await response.json()) as GetVoicesResponse;
         return GetVoicesResponseSchema.parse(data);
       } catch (error) {
         console.error("Failed to fetch voices", error);
