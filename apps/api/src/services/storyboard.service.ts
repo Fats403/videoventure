@@ -15,7 +15,7 @@ import {
 
 export class StoryboardService {
   private genAI: GoogleGenerativeAI;
-  private modelName: string = "gemini-1.5-flash";
+  private modelName: string = "gemini-2.0-flash";
   private maxAttempts = 3;
 
   constructor(apiKey?: string) {
@@ -26,29 +26,83 @@ export class StoryboardService {
     this.genAI = new GoogleGenerativeAI(key);
   }
 
-  private buildSystemPrompt(variantCount: number = 2): Content {
-    const promptText = `You are an expert video storyteller. Create ${variantCount} different high-level storyboard variants for the given concept.
+  private buildSystemPrompt(variantCount: number = 2, format: string): Content {
+    if (format === "commercial") {
+      return this.buildCommercialPrompt(variantCount);
+    } else {
+      return this.buildNarrativePrompt(variantCount);
+    }
+  }
 
-TASK: Generate ${variantCount} distinct creative approaches to the same concept.
+  private buildNarrativePrompt(variantCount: number = 2): Content {
+    const promptText = `You are an expert storyteller creating detailed narrative storyboards. Generate ${variantCount} distinct story approaches written as engaging short stories.
+
+TASK: Create ${variantCount} detailed narrative storyboards (max 3000 characters each).
 
 REQUIREMENTS:
-1. Each variant should have a different creative angle or storytelling approach
-2. Keep descriptions concise but compelling (2-3 sentences max)
-3. Content should be a brief outline of the story flow, not detailed scenes
-4. Tags should be 3-5 relevant keywords
-5. Titles should be catchy and distinct
-6. For commercials, ensure each variant incorporates the brand message and call-to-action naturally
+- Write as engaging short stories with flowing paragraphs
+- Include rich character development and narrative progression
+- Use descriptive language that paints clear visual pictures
+- Show character transformation and emotional journey
+- Write in third person narrative style
+- Flow naturally from one story beat to the next
+- Include character thoughts, emotions, and motivations
+- Show character development throughout the story
+
+STORY STRUCTURE:
+- Natural character introductions within the narrative flow
+- Clear beginning, middle, and end progression
+- Conflict, development, and resolution
+- Emotional depth and engaging prose
 
 OUTPUT FORMAT (JSON only, no other text):
 [
   {
-    "title": "Creative Title 1",
-    "description": "Brief description of this approach",
-    "tags": ["tag1", "tag2", "tag3"],
-    "content": "High-level story outline: Opening -> Development -> Conclusion"
-  },
-  // ... ${variantCount} total variants
-]`;
+    "title": "Compelling Creative Title",
+    "description": "Brief 2-3 sentence overview of this narrative approach",
+    "tags": ["relevant", "story", "keywords"],
+    "content": "[Write the complete story in flowing paragraphs, like a short story. Make it engaging and visual while maintaining narrative flow.]"
+  }
+]
+
+Write compelling, readable stories that feel like complete short narratives with well-developed characters and clear story arcs.`;
+
+    return { role: "system", parts: [{ text: promptText }] };
+  }
+
+  private buildCommercialPrompt(variantCount: number = 2): Content {
+    const promptText = `You are an expert commercial storyboard artist creating advertising concepts. Generate ${variantCount} distinct commercial approaches.
+
+TASK: Create ${variantCount} detailed commercial storyboards (max 3000 characters each).
+
+REQUIREMENTS:
+- Structure as actual commercial storyboard outlines
+- Focus on advertising objectives and brand messaging
+- Include hook, problem/solution, product benefits, and call-to-action
+- Show how to engage target audience and drive action
+- Write in paragraph form, NOT numbered sections or bullet points
+- Flow naturally from one advertising beat to the next
+
+COMMERCIAL STRUCTURE (write as flowing paragraphs):
+- Opening Hook: How to grab attention immediately
+- Problem/Situation: What challenge or need does the audience face
+- Solution Introduction: How the product/service addresses this
+- Demonstration/Benefits: Show the product in action or key benefits
+- Emotional Connection: Why this matters to the target audience
+- Call-to-Action: Clear next step for the viewer
+
+OUTPUT FORMAT (JSON only, no other text):
+[
+  {
+    "title": "Compelling Creative Title",
+    "description": "Brief 2-3 sentence overview of this commercial approach",
+    "tags": ["relevant", "advertising", "keywords"],
+    "content": "[Write the commercial storyboard as flowing paragraphs that describe the advertising approach, visual elements, and messaging strategy.]"
+  }
+]
+
+Write commercial storyboards as descriptive paragraphs that explain the advertising strategy and visual approach, not as numbered lists or sections.`;
+
     return { role: "system", parts: [{ text: promptText }] };
   }
 
@@ -157,7 +211,7 @@ OUTPUT FORMAT (JSON only, no other text):
   ): Promise<StoryboardResponse[]> {
     console.log(`🚀 Generating initial storyboard variants for concept`);
 
-    const systemInstruction = this.buildSystemPrompt(2);
+    const systemInstruction = this.buildSystemPrompt(2, conceptData.format);
     const userPrompt = this.buildUserPrompt(conceptData);
 
     const validatedVariants = await this.callGeminiAPI(
@@ -180,10 +234,25 @@ OUTPUT FORMAT (JSON only, no other text):
   ): Promise<StoryboardResponse> {
     console.log(`🚀 Generating additional storyboard variant`);
 
-    const systemInstruction = this.buildSystemPrompt(1);
+    const systemInstruction = this.buildSystemPrompt(1, conceptData.format);
+
+    let additionalInstructions = "";
+    if (conceptData.format === "commercial") {
+      additionalInstructions = `\n\nFor this additional variant, explore a different advertising approach:
+- Try a different emotional appeal or marketing angle
+- Consider alternative ways to present the product benefits
+- Explore different target audience connection points
+- Write in flowing paragraphs, not numbered sections`;
+    } else {
+      additionalInstructions = `\n\nFor this additional variant, explore a different storytelling approach:
+- Consider telling from a different character's perspective
+- Try a different emotional tone or narrative structure
+- Explore alternative character relationships or story arcs
+- Maintain the engaging short story format`;
+    }
+
     const userPrompt =
-      this.buildUserPrompt(conceptData) +
-      "\n\nCreate a unique variant that offers a fresh perspective different from typical approaches.";
+      this.buildUserPrompt(conceptData) + additionalInstructions;
 
     const validatedVariants = await this.callGeminiAPI(
       systemInstruction,
@@ -202,24 +271,29 @@ OUTPUT FORMAT (JSON only, no other text):
   }
 
   private buildUserPrompt(conceptData: any): string {
-    let prompt = `Create storyboard variants for this concept:\n\n`;
+    let prompt = `Create detailed storyboard content for this concept:\n\n`;
 
-    prompt += `Content: ${conceptData.content}\n`;
-    prompt += `Format: ${conceptData.format}\n`;
+    prompt += `CONCEPT: ${conceptData.content}\n`;
+    prompt += `FORMAT: ${conceptData.format}\n`;
 
-    if (conceptData.genre) prompt += `Genre: ${conceptData.genre}\n`;
-    if (conceptData.tone) prompt += `Tone: ${conceptData.tone}\n`;
+    if (conceptData.genre) prompt += `GENRE: ${conceptData.genre}\n`;
+    if (conceptData.tone) prompt += `TONE: ${conceptData.tone}\n`;
 
-    // Add format-specific context
+    // Only add commercial-specific details for commercial format
     if (conceptData.format === "commercial") {
+      prompt += `\nCOMMERCIAL DETAILS:\n`;
       if (conceptData.commercialBrand)
-        prompt += `Brand: ${conceptData.commercialBrand}\n`;
+        prompt += `- Brand: ${conceptData.commercialBrand}\n`;
       if (conceptData.commercialMessage)
-        prompt += `Message: ${conceptData.commercialMessage}\n`;
+        prompt += `- Key Message: ${conceptData.commercialMessage}\n`;
       if (conceptData.commercialTargetAudience)
-        prompt += `Target Audience: ${conceptData.commercialTargetAudience}\n`;
+        prompt += `- Target Audience: ${conceptData.commercialTargetAudience}\n`;
       if (conceptData.commercialCallToAction)
-        prompt += `Call to Action: ${conceptData.commercialCallToAction}\n`;
+        prompt += `- Call to Action: ${conceptData.commercialCallToAction}\n`;
+
+      prompt += `\nCreate a commercial storyboard that effectively advertises this product/service. Write in flowing paragraphs that describe the visual approach and advertising strategy.`;
+    } else {
+      prompt += `\nCreate this as an engaging short story with flowing paragraphs. Include rich character development, clear narrative progression, and vivid descriptions.`;
     }
 
     return prompt;

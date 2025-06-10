@@ -12,6 +12,17 @@ export const createProjectResponseSchema = z.object({
   storyboardVariants: z.array(storyboardSchema),
 });
 
+const VoiceSchema = z.object({
+  voice_id: z.string(),
+  name: z.string(),
+  preview_url: z.string().url().optional(),
+});
+
+export const GetVoicesResponseSchema = z.object({
+  voices: z.array(VoiceSchema),
+  total_count: z.number(),
+});
+
 // Complete form schema for all steps
 export const completeVideoFormSchema = z.object({
   // Step 1: Concept
@@ -28,5 +39,6 @@ export const completeVideoFormSchema = z.object({
 });
 
 // Export inferred types
+export type GetVoicesResponse = z.infer<typeof GetVoicesResponseSchema>;
 export type CreateProjectResponse = z.infer<typeof createProjectResponseSchema>;
 export type CompleteVideoForm = z.infer<typeof completeVideoFormSchema>;

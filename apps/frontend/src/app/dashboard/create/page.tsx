@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
 import { toast } from "sonner";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   completeVideoFormSchema,
   type CompleteVideoForm,
@@ -23,8 +24,21 @@ import { api } from "@/trpc/react";
 
 const STEPS = ["CONCEPT", "STORYBOARD", "SETTINGS & CAST", "BREAKDOWN"];
 
+// Map project status to step index
+const STATUS_TO_STEP = {
+  storyboard: 1,
+  settings: 2,
+  breakdown: 3,
+} as const;
+
 export default function CreatePage() {
   const [currentStep, setCurrentStep] = useState(0);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const videoIdParam = searchParams.get("v");
 
   const { open } = useSidebar();
   const isMobile = useIsMobile();
@@ -53,7 +67,7 @@ export default function CreatePage() {
       },
       settings: {
         projectName: "",
-        videoModel: "standard",
+        videoModel: "kling-1.6",
         aspectRatio: "16:9",
         videoStyle: "none",
         cinematicInspiration: "",
@@ -66,10 +80,86 @@ export default function CreatePage() {
     },
   });
 
+  // Fetch project data if videoId is in query params
+  const { data: project, isLoading: projectLoading } =
+    api.video.getProject.useQuery(
+      { id: videoIdParam! },
+      {
+        enabled: !!videoIdParam,
+        retry: false,
+      },
+    );
+
+  // Handle project loading and smart routing
+  useEffect(() => {
+    if (!videoIdParam) return;
+
+    if (projectLoading) {
+      setIsLoadingProject(true);
+      return;
+    }
+
+    if (!project) {
+      toast.error("Project not found");
+      // Remove invalid query param and start fresh
+      router.replace("/dashboard/create");
+      return;
+    }
+
+    // Check project status and redirect if necessary
+    if (
+      project.status === "generating" ||
+      project.status === "completed" ||
+      project.status === "failed"
+    ) {
+      router.push(`/dashboard/videos/${videoIdParam}`);
+      return;
+    }
+
+    // Load project data into form
+    if (project.concept) {
+      form.reset({
+        concept: project.concept,
+        storyboard: project.storyboard || {
+          variants: [],
+          selectedVariantId: "",
+          customContent: "",
+        },
+        settings: project.settings || {
+          projectName: "",
+          videoModel: "kling-1.6",
+          aspectRatio: "16:9",
+          videoStyle: "none",
+          cinematicInspiration: "",
+          characters: [],
+        },
+        breakdown: project.breakdown || {
+          scenes: [],
+          musicDescription: "",
+        },
+      });
+    }
+
+    // Set current step based on project status
+    const stepIndex =
+      STATUS_TO_STEP[project.status as keyof typeof STATUS_TO_STEP];
+    if (stepIndex !== undefined) {
+      setCurrentStep(stepIndex);
+    }
+
+    setProjectId(project.id);
+    setIsLoadingProject(false);
+  }, [project, projectLoading, router, videoIdParam, form]);
+
   const createProjectMutation = api.video.create.useMutation({
     onSuccess: (data) => {
-      // TODO: Set the projectId as a query param?
       form.setValue("storyboard.variants", data.storyboardVariants);
+      setProjectId(data.projectId);
+
+      // Add project ID to URL as query param
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set("v", data.projectId);
+      router.replace(newUrl.pathname + newUrl.search);
 
       setCurrentStep(1);
     },
@@ -78,42 +168,88 @@ export default function CreatePage() {
     },
   });
 
-  const handleNextStep = async () => {
-    if (currentStep === 0) {
-      // Validate concept step and submit
+  const updateStoryboardMutation = api.video.updateStoryboard.useMutation({
+    onSuccess: () => {
+      setCurrentStep(2);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to save storyboard");
+    },
+  });
+
+  const updateSettingsMutation = api.video.updateSettings.useMutation({
+    onSuccess: () => {
+      setCurrentStep(3);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to save settings");
+    },
+  });
+
+  const finalizeProjectMutation =
+    api.video.updateBreakdownAndGenerate.useMutation({
+      onSuccess: () => {
+        toast.success("Video generation started!");
+        if (projectId) {
+          router.push(`/dashboard/videos/${projectId}`);
+        }
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to start video generation");
+      },
+    });
+
+  const stepHandlers = {
+    0: async () => {
       const isValid = await form.trigger("concept");
       if (isValid) {
         const conceptData = form.getValues("concept");
         createProjectMutation.mutate(conceptData);
       }
-    } else if (currentStep === 1) {
-      // Validate storyboard step
+    },
+    1: async () => {
       const isValid = await form.trigger("storyboard");
-      if (isValid) {
-        setCurrentStep(2);
+      if (isValid && projectId) {
+        const storyboardData = form.getValues("storyboard");
+        if (storyboardData) {
+          updateStoryboardMutation.mutate({
+            projectId,
+            storyboard: storyboardData,
+          });
+        }
       }
-    } else if (currentStep === 2) {
-      // Validate settings step
+    },
+    2: async () => {
       const isValid = await form.trigger("settings");
-      if (isValid) {
-        setCurrentStep(3);
+      if (isValid && projectId) {
+        const settingsData = form.getValues("settings");
+        if (settingsData) {
+          updateSettingsMutation.mutate({
+            projectId,
+            settings: settingsData,
+          });
+        }
       }
-    } else {
-      // Final step - generate video
+    },
+    3: async () => {
       const isValid = await form.trigger();
-      if (isValid) {
-        const allData = form.getValues();
-        console.log("Final form data:", allData);
-        // TODO: Call final video generation API
-        toast.success("Video generation started!");
+      if (isValid && projectId) {
+        const breakdownData = form.getValues("breakdown");
+        if (breakdownData) {
+          finalizeProjectMutation.mutate({
+            projectId,
+            breakdown: breakdownData,
+          });
+        }
       }
-    }
-  };
+    },
+  } as const;
 
-  const onSubmit = async (data: CompleteVideoForm) => {
-    console.log("Final form data:", data);
-    // TODO: Call final video generation API
-    toast.success("Video generation started!");
+  const handleNextStep = async () => {
+    const handler = stepHandlers[currentStep as keyof typeof stepHandlers];
+    if (handler) {
+      await handler();
+    }
   };
 
   const renderStep = () => {
@@ -131,7 +267,23 @@ export default function CreatePage() {
     }
   };
 
-  const isGenerating = createProjectMutation.isPending;
+  // Show loading state when loading existing project
+  if (isLoadingProject) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin" />
+          <p className="text-muted-foreground">Loading project...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const isGenerating =
+    createProjectMutation.isPending ||
+    updateStoryboardMutation.isPending ||
+    updateSettingsMutation.isPending ||
+    finalizeProjectMutation.isPending;
 
   return (
     <div className="flex flex-col">
@@ -166,8 +318,8 @@ export default function CreatePage() {
         <div
           className="relative z-10 container mx-auto max-w-4xl px-4 py-8"
           style={{
-            minHeight: "calc(100vh - 140px)", // 100vh - header height - footer height
-            paddingBottom: "calc(2rem + 60px)", // Extra padding to account for footer
+            minHeight: "calc(100vh - 140px)",
+            paddingBottom: "calc(2rem + 60px)",
           }}
         >
           <Form {...form}>
@@ -183,7 +335,7 @@ export default function CreatePage() {
         >
           <div className="mx-auto h-full px-4 py-3">
             <div className="flex h-full items-center justify-end gap-4">
-              {/* add back button */}
+              {/* Back button - only show after concept step and when not generating */}
               {currentStep > 0 && !isGenerating && (
                 <Button
                   type="button"
@@ -200,14 +352,7 @@ export default function CreatePage() {
                 type="button"
                 className="bg-primary hover:bg-primary/90 px-6"
                 disabled={isGenerating}
-                onClick={async () => {
-                  if (currentStep < STEPS.length - 1) {
-                    void handleNextStep();
-                  } else {
-                    // Final submit
-                    void form.handleSubmit(onSubmit)();
-                  }
-                }}
+                onClick={handleNextStep}
               >
                 {currentStep < STEPS.length - 1 ? (
                   <>
@@ -217,7 +362,12 @@ export default function CreatePage() {
                     Next <ChevronRight className="ml-1 h-4 w-4" />
                   </>
                 ) : (
-                  "Submit"
+                  <>
+                    {isGenerating && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Generate Video
+                  </>
                 )}
               </Button>
             </div>

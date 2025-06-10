@@ -8,10 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Plus,
   Info,
-  ChevronLeft,
-  ChevronRight,
   Edit,
   Settings,
   Users,
@@ -280,32 +285,20 @@ export function SettingsStep({ form }: SettingsStepProps) {
                     <FormLabel className="text-sm font-medium">
                       VIDEO MODEL
                     </FormLabel>
-                    <div className="grid grid-cols-1 gap-3">
-                      {Object.entries(FAL_VIDEO_MODELS).map(([id, model]) => (
-                        <Card
-                          key={id}
-                          className={cn(
-                            "cursor-pointer p-0 transition-all duration-200 hover:shadow-md",
-                            field.value === id
-                              ? "border-primary/70 bg-primary/10 shadow-sm"
-                              : "hover:border-primary/30 hover:bg-primary/5",
-                          )}
-                          onClick={() => field.onChange(id)}
-                        >
-                          <CardContent className="flex items-center p-4">
-                            <div className="flex-1">
-                              <h3 className="font-medium">{model.name}</h3>
-                              <p className="text-muted-foreground text-sm">
-                                {model.description}
-                              </p>
-                            </div>
-                            {field.value === id && (
-                              <div className="bg-primary h-2 w-2 rounded-full"></div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="focus-visible:border-primary/50 focus-visible:ring-primary/30 w-full border-2">
+                          <SelectValue placeholder="Select a video model" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {Object.entries(FAL_VIDEO_MODELS).map(([id, model]) => (
+                          <SelectItem key={id} value={id}>
+                            {model.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -418,90 +411,36 @@ export function SettingsStep({ form }: SettingsStepProps) {
                 name="settings.videoStyle"
                 render={({ field }) => (
                   <FormItem>
-                    <div className="space-y-3">
-                      <div
-                        className="relative"
-                        onMouseEnter={() => setShowArrows(true)}
-                        onMouseLeave={() => setShowArrows(false)}
-                      >
-                        {/* Left scroll arrow */}
-                        {showArrows && showLeftBlur && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="bg-background/80 absolute top-1/2 left-2 z-10 h-8 w-8 -translate-y-1/2 rounded-full shadow-md"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              scrollStyles("left");
-                            }}
+                    <div className="space-y-4">
+                      {/* Video Style Grid */}
+                      <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4">
+                        {videoStyles.map((style) => (
+                          <Card
+                            key={style.value}
+                            className={cn(
+                              "cursor-pointer p-0 transition-all duration-200 hover:shadow-md",
+                              field.value === style.value
+                                ? "border-primary/70 bg-primary/10 shadow-sm"
+                                : "hover:border-primary/30 hover:bg-primary/5",
+                            )}
+                            onClick={() => field.onChange(style.value)}
                           >
-                            <ChevronLeft className="h-5 w-5" />
-                          </Button>
-                        )}
-
-                        {/* Scrollable container */}
-                        <div
-                          ref={styleScrollRef}
-                          className="scrollbar-hide flex gap-3 overflow-x-auto pb-2"
-                          style={{
-                            scrollbarWidth: "none",
-                            msOverflowStyle: "none",
-                          }}
-                        >
-                          {videoStyles.map((style) => (
-                            <Card
-                              key={style.value}
-                              className={cn(
-                                "flex-shrink-0 cursor-pointer p-0 transition-all duration-200 hover:shadow-md",
-                                field.value === style.value
-                                  ? "border-primary/70 bg-primary/10 shadow-sm"
-                                  : "hover:border-primary/30 hover:bg-primary/5",
-                              )}
-                              onClick={() => field.onChange(style.value)}
-                              style={{ minWidth: `${styleCardWidth}px` }}
-                            >
-                              <CardContent className="flex flex-col items-center p-3 text-center">
-                                <div
-                                  className={cn(
-                                    "mb-2 h-12 w-16 rounded",
-                                    style.color,
-                                  )}
-                                ></div>
-                                <span className="text-xs font-medium">
-                                  {style.label}
-                                </span>
-                                {field.value === style.value && (
-                                  <div className="bg-primary mt-1 h-1 w-1 rounded-full"></div>
+                            <CardContent className="flex flex-col items-center p-3 text-center">
+                              <div
+                                className={cn(
+                                  "mb-2 h-12 w-16 rounded",
+                                  style.color,
                                 )}
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-
-                        {/* Right scroll arrow */}
-                        {showArrows && showRightBlur && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="bg-background/80 absolute top-1/2 right-2 z-10 h-8 w-8 -translate-y-1/2 rounded-full shadow-md"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                              scrollStyles("right");
-                            }}
-                          >
-                            <ChevronRight className="h-5 w-5" />
-                          </Button>
-                        )}
-
-                        {/* Gradient fades */}
-                        {showLeftBlur && (
-                          <div className="from-background pointer-events-none absolute top-0 left-0 h-full w-8 bg-gradient-to-r to-transparent"></div>
-                        )}
-                        {showRightBlur && (
-                          <div className="from-background pointer-events-none absolute top-0 right-0 h-full w-8 bg-gradient-to-l to-transparent"></div>
-                        )}
+                              ></div>
+                              <span className="text-xs font-medium">
+                                {style.label}
+                              </span>
+                              {field.value === style.value && (
+                                <div className="bg-primary mt-1 h-1 w-1 rounded-full"></div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        ))}
                       </div>
 
                       {/* Selected style description */}

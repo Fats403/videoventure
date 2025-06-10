@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { type UseFormReturn } from "react-hook-form";
 import type { CompleteVideoForm } from "@/lib/zod/create-video";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import {
   FormItem,
   FormMessage,
 } from "@/components/ui/form";
+import { api } from "@/trpc/react";
+import { toast } from "sonner";
 
 interface StoryboardStepProps {
   form: UseFormReturn<CompleteVideoForm>;
@@ -28,9 +30,36 @@ export function StoryboardStep({ form }: StoryboardStepProps) {
   const variants = storyboardData?.variants ?? [];
   const selectedVariantId = storyboardData?.selectedVariantId;
 
+  // Auto-select first variant when variants are loaded
+  useEffect(() => {
+    if (variants.length > 0 && !selectedVariantId) {
+      const firstVariant = variants[0];
+      if (firstVariant) {
+        form.setValue("storyboard.selectedVariantId", firstVariant.id);
+        form.setValue("storyboard.customContent", firstVariant.content);
+      }
+    }
+  }, [variants, selectedVariantId, form]);
+
   // Find the selected variant or default to first one
   const selectedVariant =
     variants.find((v) => v.id === selectedVariantId) ?? variants[0];
+
+  const generateAdditionalVariantMutation =
+    api.video.generateAdditionalVariant.useMutation({
+      onSuccess: (newVariant) => {
+        // Add the new variant to the existing variants
+        const currentVariants = form.getValues("storyboard.variants") ?? [];
+        form.setValue("storyboard.variants", [...currentVariants, newVariant]);
+        toast.success("New story variant generated!");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to generate additional variant");
+      },
+      onSettled: () => {
+        setIsGenerating(false);
+      },
+    });
 
   const handleSelectVariant = (variantId: string) => {
     const variant = variants.find((v) => v.id === variantId);
@@ -42,12 +71,10 @@ export function StoryboardStep({ form }: StoryboardStepProps) {
 
   const handleGenerateMore = async () => {
     setIsGenerating(true);
-    // TODO: Call API to generate more variants
-    // For now, just simulate loading
-    setTimeout(() => {
-      setIsGenerating(false);
-      // In real app, would update form with new variants
-    }, 2000);
+
+    // Get the concept data to generate additional variant
+    const conceptData = form.getValues("concept");
+    generateAdditionalVariantMutation.mutate(conceptData);
   };
 
   // If no variants available, show loading or empty state
@@ -233,32 +260,6 @@ export function StoryboardStep({ form }: StoryboardStepProps) {
               />
             </CardContent>
           </Card>
-
-          {/* Quick Actions */}
-          <div className="grid grid-cols-2 gap-4">
-            <Button
-              type="button"
-              variant="outline"
-              className="hover:border-primary/50 border-2"
-              onClick={() => {
-                // TODO: Regenerate story based on current content
-              }}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Regenerate Story
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="hover:border-primary/50 border-2"
-              onClick={() => {
-                // TODO: Enhance story with AI
-              }}
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              Enhance with AI
-            </Button>
-          </div>
         </div>
       </div>
     </div>
