@@ -120,12 +120,12 @@ export default function CreatePage() {
     if (project.concept) {
       form.reset({
         concept: project.concept,
-        storyboard: project.storyboard || {
+        storyboard: project.storyboard ?? {
           variants: [],
           selectedVariantId: "",
           customContent: "",
         },
-        settings: project.settings || {
+        settings: project.settings ?? {
           projectName: "",
           videoModel: "kling-1.6",
           aspectRatio: "16:9",
@@ -133,7 +133,7 @@ export default function CreatePage() {
           cinematicInspiration: "",
           characters: [],
         },
-        breakdown: project.breakdown || {
+        breakdown: project.breakdown ?? {
           scenes: [],
           musicDescription: "",
         },
@@ -141,8 +141,8 @@ export default function CreatePage() {
     }
 
     // Set current step based on project status
-    const stepIndex =
-      STATUS_TO_STEP[project.status as keyof typeof STATUS_TO_STEP];
+    const stepIndex = STATUS_TO_STEP[project.status];
+
     if (stepIndex !== undefined) {
       setCurrentStep(stepIndex);
     }
