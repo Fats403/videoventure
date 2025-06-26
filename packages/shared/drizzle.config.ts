@@ -9,6 +9,8 @@ export default {
   schema: "./src/db/schema.ts",
   out: "./drizzle",
   dialect: "postgresql",
+  verbose: true,
+  strict: false,
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },

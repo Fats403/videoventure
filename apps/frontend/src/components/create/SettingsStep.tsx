@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from "react";
-import { type UseFormReturn } from "react-hook-form";
+import { type UseFormReturn, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import type { CompleteVideoForm } from "@/lib/zod/create-video";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -21,11 +23,14 @@ import {
   Settings,
   Users,
   Palette,
-  Upload,
   X,
   Camera,
   RefreshCw,
   ImageIcon,
+  Trash2,
+  Loader2,
+  Check,
+  ChevronDown,
 } from "lucide-react";
 import {
   Card,
@@ -48,6 +53,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Form,
   FormControl,
   FormField,
   FormItem,
@@ -59,12 +71,24 @@ import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Character } from "@video-venture/shared";
 import { FAL_VIDEO_MODELS } from "@video-venture/shared";
+import { toast } from "sonner";
+import { api } from "@/trpc/react";
 
 const styleCardWidth = 96;
 
 interface SettingsStepProps {
   form: UseFormReturn<CompleteVideoForm>;
 }
+
+// Character form schema - simplified
+const characterFormSchema = z.object({
+  name: z.string().min(1, "Character name is required"),
+  description: z.string().min(10, "Description must be at least 10 characters"),
+  appearance: z.string().optional(),
+  age: z.string().optional(),
+});
+
+type CharacterFormData = z.infer<typeof characterFormSchema>;
 
 const aspectRatios = [
   {
@@ -134,16 +158,48 @@ const videoStyles = [
 
 export function SettingsStep({ form }: SettingsStepProps) {
   const styleScrollRef = useRef<HTMLDivElement>(null);
-  const [showArrows, setShowArrows] = useState(false);
   const [showLeftBlur, setShowLeftBlur] = useState(false);
   const [showRightBlur, setShowRightBlur] = useState(true);
   const [isCharacterDialogOpen, setIsCharacterDialogOpen] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(
     null,
   );
+  const [isCharacterSelectorOpen, setIsCharacterSelectorOpen] = useState(false);
 
-  // Get characters from form
-  const characters = form.watch("settings.characters") || [];
+  // tRPC queries and mutations with better cache management
+  const { data: allCharacters = [], refetch: refetchCharacters } =
+    api.character.getAll.useQuery(undefined, {
+      // Only refetch on window focus if data is stale
+      refetchOnWindowFocus: false,
+      // Cache for 5 minutes
+      staleTime: 5 * 60 * 1000,
+    });
+
+  const createCharacterMutation = api.character.create.useMutation({
+    onSuccess: () => {
+      refetchCharacters();
+    },
+  });
+
+  const updateCharacterMutation = api.character.update.useMutation({
+    onSuccess: () => {
+      refetchCharacters();
+    },
+  });
+
+  const deleteCharacterMutation = api.character.delete.useMutation({
+    onSuccess: () => {
+      refetchCharacters();
+    },
+  });
+
+  // Get selected character IDs from form
+  const selectedCharacterIds = form.watch("settings.characters") || [];
+
+  // Get full character objects for selected IDs
+  const selectedCharacters = allCharacters.filter((char) =>
+    selectedCharacterIds.includes(char.id),
+  );
 
   // Check scroll position when component mounts and on window resize
   useEffect(() => {
@@ -184,7 +240,7 @@ export function SettingsStep({ form }: SettingsStepProps) {
     });
   };
 
-  const handleAddCharacter = () => {
+  const handleCreateNewCharacter = () => {
     setEditingCharacter(null);
     setIsCharacterDialogOpen(true);
   };
@@ -194,41 +250,59 @@ export function SettingsStep({ form }: SettingsStepProps) {
     setIsCharacterDialogOpen(true);
   };
 
-  const handleSaveCharacter = (characterData: Partial<Character>) => {
-    const currentCharacters = form.getValues("settings.characters") || [];
-
-    if (editingCharacter) {
-      // Update existing character
-      const updatedCharacters = currentCharacters.map((char) =>
-        char.id === editingCharacter.id ? { ...char, ...characterData } : char,
-      );
-      form.setValue("settings.characters", updatedCharacters);
-    } else {
-      // Add new character
-      const newCharacter: Character = {
-        id: Date.now().toString(),
-        name: characterData.name ?? "",
-        description: characterData.description,
-        image: characterData.image,
-        appearance: characterData.appearance,
-        clothing: characterData.clothing,
-        voice: characterData.voice,
-        age: characterData.age,
-      };
-      form.setValue("settings.characters", [
-        ...currentCharacters,
-        newCharacter,
-      ]);
+  const handleCharacterSaved = async (character: Character) => {
+    if (!editingCharacter) {
+      // Auto-select the new character
+      const currentIds = form.getValues("settings.characters") || [];
+      form.setValue("settings.characters", [...currentIds, character.id]);
     }
+
     setIsCharacterDialogOpen(false);
+    toast.success(
+      editingCharacter ? "Character updated!" : "Character created!",
+    );
   };
 
-  const handleDeleteCharacter = (id: string) => {
-    const currentCharacters = form.getValues("settings.characters") || [];
-    const updatedCharacters = currentCharacters.filter(
-      (char) => char.id !== id,
+  const handleDeleteCharacter = async (characterId: string) => {
+    try {
+      await deleteCharacterMutation.mutateAsync({ id: characterId });
+
+      // Remove from selected characters
+      const currentIds = form.getValues("settings.characters") || [];
+      form.setValue(
+        "settings.characters",
+        currentIds.filter((id) => id !== characterId),
+      );
+
+      toast.success("Character deleted!");
+    } catch (error) {
+      toast.error("Failed to delete character");
+    }
+  };
+
+  const handleCharacterToggle = (characterId: string, checked: boolean) => {
+    const currentIds = form.getValues("settings.characters") || [];
+    if (checked) {
+      form.setValue("settings.characters", [...currentIds, characterId]);
+    } else {
+      form.setValue(
+        "settings.characters",
+        currentIds.filter((id) => id !== characterId),
+      );
+    }
+  };
+
+  const handleRemoveCharacterFromProject = (characterId: string) => {
+    const currentIds = form.getValues("settings.characters") || [];
+    form.setValue(
+      "settings.characters",
+      currentIds.filter((id) => id !== characterId),
     );
-    form.setValue("settings.characters", updatedCharacters);
+  };
+
+  const handleDelete = () => {
+    if (!editingCharacter) return;
+    handleDeleteCharacter(editingCharacter.id);
   };
 
   return (
@@ -474,114 +548,196 @@ export function SettingsStep({ form }: SettingsStepProps) {
                 Cast & Characters
               </CardTitle>
               <CardDescription>
-                Create and manage the characters in your video
+                Select characters for your video project
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Add Character Card */}
-              <Card
-                className="hover:border-primary/50 hover:bg-primary/5 cursor-pointer border-2 border-dashed p-0 transition-all duration-200"
-                onClick={handleAddCharacter}
-              >
-                <CardContent className="flex items-center p-6">
-                  <div className="bg-primary/10 mr-4 flex aspect-square h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg">
-                    <Plus className="text-primary h-6 w-6" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold">Add Character</h3>
-                    <p className="text-muted-foreground text-sm">
-                      Create a new cast member for your video
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Character List */}
-              <AnimatePresence>
-                {characters.map((character, index) => (
-                  <motion.div
-                    key={character.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ delay: index * 0.1 }}
+              {/* Character Multi-Select */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">SELECT CHARACTERS</Label>
+                <div className="flex gap-2">
+                  <Popover
+                    open={isCharacterSelectorOpen}
+                    onOpenChange={setIsCharacterSelectorOpen}
                   >
-                    <Card className="hover:border-primary/50 overflow-hidden p-0 transition-all duration-200 hover:shadow-md">
-                      <CardContent className="p-0">
-                        <div className="flex">
-                          <div className="aspect-square h-auto w-[120px] overflow-hidden">
-                            {character.image ? (
-                              <Image
-                                width={120}
-                                height={120}
-                                src={character.image}
-                                alt={character.name}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="bg-muted flex h-full w-full items-center justify-center">
-                                <Camera className="text-muted-foreground h-8 w-8" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex-1 p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="min-w-0 flex-1">
-                                <h3 className="mb-1 text-base font-semibold">
-                                  {character.name}
-                                </h3>
-                                <p className="text-muted-foreground mb-2 line-clamp-2 text-sm">
-                                  {character.description}
-                                </p>
-                                {character.appearance && (
-                                  <p className="text-muted-foreground text-xs">
-                                    <span className="font-medium">
-                                      Appearance:
-                                    </span>{" "}
-                                    {character.appearance}
-                                  </p>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="flex-1 justify-between border-2"
+                        disabled={allCharacters.length === 0}
+                      >
+                        <span className="text-left">
+                          {selectedCharacterIds.length === 0
+                            ? allCharacters.length === 0
+                              ? "No characters available"
+                              : "Select characters"
+                            : `${selectedCharacterIds.length} character${
+                                selectedCharacterIds.length === 1 ? "" : "s"
+                              } selected`}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0" align="start">
+                      <div className="p-3">
+                        <div className="space-y-3">
+                          {allCharacters.map((character) => (
+                            <div
+                              key={character.id}
+                              className="flex items-center space-x-3"
+                            >
+                              <Checkbox
+                                id={character.id}
+                                checked={selectedCharacterIds.includes(
+                                  character.id,
                                 )}
+                                onCheckedChange={(checked: boolean) =>
+                                  handleCharacterToggle(
+                                    character.id,
+                                    checked === true,
+                                  )
+                                }
+                              />
+                              <div className="flex flex-1 items-center space-x-2">
+                                {character.imageUrl && (
+                                  <div className="h-8 w-8 overflow-hidden rounded">
+                                    <Image
+                                      src={character.imageUrl}
+                                      alt={character.name}
+                                      width={32}
+                                      height={32}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </div>
+                                )}
+                                <div className="flex-1">
+                                  <label
+                                    htmlFor={character.id}
+                                    className="cursor-pointer text-sm font-medium"
+                                  >
+                                    {character.name}
+                                  </label>
+                                  <p className="text-muted-foreground line-clamp-1 text-xs">
+                                    {character.description}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="ml-2 flex gap-1">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => handleEditCharacter(character)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-destructive hover:text-destructive h-8 w-8 p-0"
-                                  onClick={() =>
-                                    handleDeleteCharacter(character.id)
-                                  }
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
+                            </div>
+                          ))}
+                          {allCharacters.length === 0 && (
+                            <p className="text-muted-foreground py-4 text-center text-sm">
+                              No characters available. Create one below.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Button
+                    type="button"
+                    onClick={handleCreateNewCharacter}
+                    className="gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New
+                  </Button>
+                </div>
+              </div>
+
+              {/* Selected Characters List */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">
+                  SELECTED CHARACTERS ({selectedCharacters.length})
+                </Label>
+
+                <AnimatePresence>
+                  {selectedCharacters.map((character, index) => (
+                    <motion.div
+                      key={character.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <Card className="hover:border-primary/50 overflow-hidden p-0 transition-all duration-200 hover:shadow-md">
+                        <CardContent className="p-0">
+                          <div className="flex">
+                            <div className="aspect-square h-auto w-[80px] overflow-hidden">
+                              {character.imageUrl ? (
+                                <Image
+                                  width={80}
+                                  height={80}
+                                  src={character.imageUrl}
+                                  alt={character.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="bg-muted flex h-full w-full items-center justify-center">
+                                  <Camera className="text-muted-foreground h-6 w-6" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 p-3">
+                              <div className="flex items-start justify-between">
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="mb-1 text-sm font-semibold">
+                                    {character.name}
+                                  </h3>
+                                  <p className="text-muted-foreground mb-1 line-clamp-2 text-xs">
+                                    {character.description}
+                                  </p>
+                                  {character.age && (
+                                    <p className="text-muted-foreground text-xs">
+                                      <span className="font-medium">Age:</span>{" "}
+                                      {character.age}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="ml-2 flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0"
+                                    onClick={() =>
+                                      handleEditCharacter(character)
+                                    }
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-destructive hover:text-destructive h-7 w-7 p-0"
+                                    onClick={() =>
+                                      handleRemoveCharacterFromProject(
+                                        character.id,
+                                      )
+                                    }
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </Button>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
 
-              {characters.length === 0 && (
-                <div className="py-8 text-center">
-                  <Users className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
-                  <p className="text-muted-foreground">
-                    No characters added yet
-                  </p>
-                  <p className="text-muted-foreground text-sm">
-                    Click &quot;Add Character&quot; to get started
-                  </p>
-                </div>
-              )}
+                {selectedCharacters.length === 0 && (
+                  <div className="py-6 text-center">
+                    <Users className="text-muted-foreground mx-auto mb-3 h-10 w-10" />
+                    <p className="text-muted-foreground text-sm">
+                      No characters selected for this project
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Use the selector above to choose characters
+                    </p>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -592,20 +748,26 @@ export function SettingsStep({ form }: SettingsStepProps) {
         open={isCharacterDialogOpen}
         onOpenChange={setIsCharacterDialogOpen}
       >
-        <DialogContent className="max-h-[90vh] w-[95vw] max-w-[95vw] overflow-y-auto sm:max-w-5xl">
+        <DialogContent className="max-h-[90vh] w-[95vw] max-w-[95vw] overflow-y-auto sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>
-              {editingCharacter ? "Edit Character" : "Add New Character"}
+              {editingCharacter ? "Edit Character" : "Create New Character"}
             </DialogTitle>
             <DialogDescription>
-              Define your character&apos;s appearance, personality, and voice
+              {editingCharacter
+                ? "Update your character's details and appearance"
+                : "Create a new character for your video projects"}
             </DialogDescription>
           </DialogHeader>
 
           <CharacterForm
             character={editingCharacter}
-            onSave={handleSaveCharacter}
+            onSave={handleCharacterSaved}
+            onDelete={handleDelete}
             onCancel={() => setIsCharacterDialogOpen(false)}
+            createMutation={createCharacterMutation}
+            updateMutation={updateCharacterMutation}
+            deleteMutation={deleteCharacterMutation}
           />
         </DialogContent>
       </Dialog>
@@ -613,228 +775,221 @@ export function SettingsStep({ form }: SettingsStepProps) {
   );
 }
 
-// Character Form Component
+// Simplified Character Form Component
 function CharacterForm({
   character,
   onSave,
+  onDelete,
   onCancel,
+  createMutation,
+  updateMutation,
+  deleteMutation,
 }: {
   character: Character | null;
-  onSave: (data: Partial<Character>) => void;
+  onSave: (character: Character) => void;
+  onDelete: () => void;
   onCancel: () => void;
+  createMutation: any;
+  updateMutation: any;
+  deleteMutation?: any;
 }) {
-  const [formData, setFormData] = useState({
-    name: character?.name ?? "",
-    description: character?.description ?? "",
-    appearance: character?.appearance ?? "",
-    clothing: character?.clothing ?? "",
-    voice: character?.voice ?? "",
-    age: character?.age ?? "",
-    image: character?.image ?? "",
+  const characterForm = useForm<CharacterFormData>({
+    resolver: zodResolver(characterFormSchema),
+    defaultValues: {
+      name: character?.name ?? "",
+      description: character?.description ?? "",
+      appearance: character?.appearance ?? "",
+      age: character?.age ?? "",
+    },
   });
 
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [generatedImageUrl, setGeneratedImageUrl] = useState(
+    character?.imageUrl ?? "",
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
-  };
+  const handleSubmit = async (data: CharacterFormData) => {
+    try {
+      let savedCharacter: Character;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploadedFile(file);
-      // Create a preview URL
-      const previewUrl = URL.createObjectURL(file);
-      setFormData((prev) => ({ ...prev, image: previewUrl }));
+      if (character) {
+        // Update existing character (will regenerate image)
+        savedCharacter = await updateMutation.mutateAsync({
+          id: character.id,
+          data,
+        });
+        // Update the preview image
+        setGeneratedImageUrl(savedCharacter.imageUrl || "");
+      } else {
+        // Create new character
+        savedCharacter = await createMutation.mutateAsync(data);
+        setGeneratedImageUrl(savedCharacter.imageUrl || "");
+      }
+
+      onSave(savedCharacter);
+    } catch (error) {
+      toast.error(
+        character ? "Failed to update character" : "Failed to create character",
+      );
     }
   };
 
-  const handleGenerateCharacter = async () => {
-    setIsGenerating(true);
-    // TODO: Call your AI service to generate character image
-    setTimeout(() => {
-      const generatedImageUrl = `https://images.unsplash.com/photo-${Math.floor(Math.random() * 1000000)}?w=400&h=400&fit=crop&auto=format`;
-      setFormData((prev) => ({ ...prev, image: generatedImageUrl }));
-      setIsGenerating(false);
-    }, 3000);
+  const handleDelete = () => {
+    if (!onDelete) return;
+    onDelete(); // Simple callback - no async handling needed
   };
 
-  const handleRemoveImage = () => {
-    setFormData((prev) => ({ ...prev, image: "" }));
-    setUploadedFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
+  const isLoading = createMutation.isPending || updateMutation.isPending;
+  const isDeleting = deleteMutation?.isPending || false;
+  const isAnyLoading = isLoading || isDeleting;
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">
       {/* Left Side - Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="name" className="text-sm font-medium">
-              CHARACTER NAME *
-            </Label>
-            <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, name: e.target.value }))
-              }
-              placeholder="Enter character name"
-              className="border-2"
-              required
+      <Form {...characterForm}>
+        <form
+          onSubmit={characterForm.handleSubmit(handleSubmit)}
+          className="space-y-6"
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormField
+              control={characterForm.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">
+                    CHARACTER NAME *
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="Enter character name"
+                      className="border-2"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={characterForm.control}
+              name="age"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-medium">AGE</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="e.g., 25, Ancient, Young adult"
+                      className="border-2"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="age" className="text-sm font-medium">
-              AGE
-            </Label>
-            <Input
-              id="age"
-              value={formData.age}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, age: e.target.value }))
-              }
-              placeholder="e.g., 25, Ancient, Young adult"
-              className="border-2"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="description" className="text-sm font-medium">
-            DESCRIPTION *
-          </Label>
-          <Textarea
-            id="description"
-            value={formData.description}
-            onChange={(e) =>
-              setFormData((prev) => ({ ...prev, description: e.target.value }))
-            }
-            placeholder="Describe your character's personality and role"
-            className="min-h-[80px] border-2"
-            required
+          <FormField
+            control={characterForm.control}
+            name="description"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm font-medium">
+                  DESCRIPTION *
+                </FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Describe your character's personality, role, and any specific details"
+                    className="min-h-[100px] border-2"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="appearance" className="text-sm font-medium">
-              APPEARANCE
-            </Label>
-            <Textarea
-              id="appearance"
-              value={formData.appearance}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, appearance: e.target.value }))
-              }
-              placeholder="Physical characteristics, hair, height, etc."
-              className="min-h-[80px] border-2"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="clothing" className="text-sm font-medium">
-              CLOTHING
-            </Label>
-            <Textarea
-              id="clothing"
-              value={formData.clothing}
-              onChange={(e) =>
-                setFormData((prev) => ({ ...prev, clothing: e.target.value }))
-              }
-              placeholder="What does your character wear?"
-              className="min-h-[80px] border-2"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="voice" className="text-sm font-medium">
-            VOICE CHARACTERISTICS
-          </Label>
-          <Input
-            id="voice"
-            value={formData.voice}
-            onChange={(e) =>
-              setFormData((prev) => ({ ...prev, voice: e.target.value }))
-            }
-            placeholder="e.g., Deep and commanding, High-pitched and cheerful"
-            className="border-2"
+          <FormField
+            control={characterForm.control}
+            name="appearance"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm font-medium">
+                  APPEARANCE
+                </FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Physical characteristics, clothing, hair, height, etc."
+                    className="min-h-[80px] border-2"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        {/* Form Actions - Only visible on mobile */}
-        <div className="flex gap-3 lg:hidden">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            className="flex-1"
-          >
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            className="bg-primary hover:bg-primary/90 flex-1"
-          >
-            {character ? "Update Character" : "Add Character"}
-          </Button>
-        </div>
-      </form>
+          {/* Form Actions - Only visible on mobile */}
+          <div className="flex gap-3 lg:hidden">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              className="flex-1"
+              disabled={isAnyLoading}
+            >
+              Cancel
+            </Button>
+            {character && (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleDelete}
+                className="gap-2"
+                disabled={isAnyLoading}
+              >
+                {isDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                <Trash2 className="h-4 w-4" />
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+            )}
+            <Button
+              type="submit"
+              className="bg-primary hover:bg-primary/90 flex-1"
+              disabled={isAnyLoading}
+            >
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {character ? "Update Character" : "Create Character"}
+            </Button>
+          </div>
+        </form>
+      </Form>
 
-      {/* Right Side - Character Preview & Image Management */}
+      {/* Right Side - Character Preview */}
       <div className="space-y-4">
         <div className="space-y-3">
-          <Label className="text-sm font-medium">CHARACTER IMAGE</Label>
+          <Label className="text-sm font-medium">CHARACTER PREVIEW</Label>
 
           {/* Image Preview */}
           <Card className="border-2">
             <CardContent className="p-4">
               <div className="bg-muted relative aspect-square w-full overflow-hidden rounded-lg">
-                {formData.image ? (
-                  <>
-                    {isGenerating ? (
-                      <div className="flex h-full items-center justify-center">
-                        <div className="text-center">
-                          <RefreshCw className="text-primary mx-auto mb-2 h-8 w-8 animate-spin" />
-                          <p className="text-muted-foreground text-sm">
-                            Generating character...
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <Image
-                          src={formData.image}
-                          alt="Character preview"
-                          fill
-                          className="object-cover"
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          className="absolute top-2 right-2 h-6 w-6 p-0"
-                          onClick={handleRemoveImage}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </>
-                    )}
-                  </>
+                {generatedImageUrl ? (
+                  <Image
+                    src={generatedImageUrl}
+                    alt="Character preview"
+                    fill
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center">
                     <div className="text-center">
                       <ImageIcon className="text-muted-foreground mx-auto mb-2 h-12 w-12" />
                       <p className="text-muted-foreground text-sm">
-                        No image selected
+                        {character
+                          ? "Character image"
+                          : "Image will be generated"}
                       </p>
                     </div>
                   </div>
@@ -843,56 +998,10 @@ function CharacterForm({
             </CardContent>
           </Card>
 
-          {/* Image Actions */}
-          <div className="space-y-2">
-            {/* Upload Button */}
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full gap-2"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isGenerating}
-            >
-              <Upload className="h-4 w-4" />
-              Upload Image
-            </Button>
-
-            {/* Generate Button */}
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full gap-2"
-              onClick={handleGenerateCharacter}
-              disabled={isGenerating || !formData.name || !formData.description}
-            >
-              <RefreshCw
-                className={cn("h-4 w-4", isGenerating && "animate-spin")}
-              />
-              {isGenerating ? "Generating..." : "Generate with AI"}
-            </Button>
-
-            {/* Helper text */}
+          {character && (
             <p className="text-muted-foreground text-center text-xs">
-              {!formData.name || !formData.description
-                ? "Fill in name and description to generate"
-                : "Generate based on character details"}
+              Updating any field will regenerate the character image
             </p>
-          </div>
-
-          {/* Regenerate Button (only show if image exists and not uploading) */}
-          {formData.image && !uploadedFile && (
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full gap-2"
-              onClick={handleGenerateCharacter}
-              disabled={isGenerating}
-            >
-              <RefreshCw
-                className={cn("h-4 w-4", isGenerating && "animate-spin")}
-              />
-              Regenerate
-            </Button>
           )}
         </div>
 
@@ -901,29 +1010,36 @@ function CharacterForm({
           <Button
             type="submit"
             className="bg-primary hover:bg-primary/90 w-full"
-            onClick={handleSubmit}
+            onClick={characterForm.handleSubmit(handleSubmit)}
+            disabled={isAnyLoading}
           >
-            {character ? "Update Character" : "Add Character"}
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {character ? "Update Character" : "Create Character"}
           </Button>
+          {character && (
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              className="w-full gap-2"
+              disabled={isAnyLoading}
+            >
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Trash2 className="h-4 w-4" />
+              {isDeleting ? "Deleting..." : "Delete Character"}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
             onClick={onCancel}
             className="w-full"
+            disabled={isAnyLoading}
           >
             Cancel
           </Button>
         </div>
       </div>
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleFileUpload}
-        className="hidden"
-      />
     </div>
   );
 }

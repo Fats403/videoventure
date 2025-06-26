@@ -94,16 +94,16 @@ export const storyboardDataSchema = z.object({
   customContent: z.string().optional(),
 });
 
-// Character schema
 export const characterSchema = z.object({
   id: z.string(),
-  name: z.string().min(1, "Character name is required"),
-  description: z.string().optional(),
-  image: z.string().optional(),
-  appearance: z.string().optional(),
-  clothing: z.string().optional(),
-  voice: z.string().optional(),
-  age: z.string().optional(),
+  name: z.string(),
+  description: z.string(),
+  appearance: z.string().nullable(),
+  age: z.string().nullable(),
+  imageUrl: z.string().url().optional(),
+  storageKey: z.string().optional(),
+  createdAt: z.date(),
+  updatedAt: z.date(),
 });
 
 // Settings data schema
@@ -123,7 +123,7 @@ export const settingsDataSchema = z.object({
     ])
     .optional(),
   cinematicInspiration: z.string().optional(),
-  characters: z.array(characterSchema),
+  characters: z.array(z.string()),
 });
 
 // Scene schema
@@ -178,20 +178,20 @@ export const userSchema = z.object({
 export const videoProjectSchema = z.object({
   id: z.string(),
   userId: z.string(),
-  projectName: z.string().optional(),
+  projectName: z.string().nullable(),
   status: projectStatusSchema,
-  concept: conceptDataSchema.optional(),
-  storyboard: storyboardDataSchema.optional(),
-  settings: settingsDataSchema.optional(),
-  breakdown: breakdownDataSchema.optional(),
-  video: videoDataSchema.optional(),
-  currentJobId: z.string().optional(),
-  history: z.record(z.string(), videoHistorySchema).optional(),
-  views: z.number().min(0).default(0),
-  version: z.number().min(0).default(1),
+  concept: conceptDataSchema.nullable(),
+  storyboard: storyboardDataSchema.nullable(),
+  settings: settingsDataSchema.nullable(),
+  breakdown: breakdownDataSchema.nullable(),
+  video: videoDataSchema.nullable(),
+  currentJobId: z.string().nullable(),
+  history: z.record(z.string(), videoHistorySchema).nullable(),
+  views: z.number().min(0).nullable(),
+  version: z.number().min(0).nullable(),
   visibility: projectVisibilitySchema,
   createdAt: z.date(),
-  updatedAt: z.date().optional(),
+  updatedAt: z.date(),
 });
 
 // Export inferred types

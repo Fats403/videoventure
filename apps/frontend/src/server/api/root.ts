@@ -1,6 +1,7 @@
 import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
 import { videoRouter } from "./routers/video";
 import { voiceRouter } from "./routers/voices";
+import { characterRouter } from "./routers/character";
 /**
  * This is the primary router for your server.
  *
@@ -9,6 +10,7 @@ import { voiceRouter } from "./routers/voices";
 export const appRouter = createTRPCRouter({
   video: videoRouter,
   voice: voiceRouter,
+  character: characterRouter,
 });
 
 // export type definition of API

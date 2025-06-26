@@ -90,11 +90,43 @@ export const videoProjects = pgTable(
   ]
 );
 
+export const characters = pgTable(
+  "character",
+  {
+    id: varchar("id", { length: 21 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    appearance: text("appearance"),
+    age: text("age"),
+    imageUrl: text("image_url").notNull(),
+    storageKey: text("storage_key").notNull(), // For deletion: userId/characters/nanoid.png
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (table) => [
+    index("character_user_id_idx").on(table.userId),
+    index("character_created_at_idx").on(table.createdAt),
+  ]
+);
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   videoProjects: many(videoProjects),
+  characters: many(characters),
 }));
 
 export const videoProjectsRelations = relations(videoProjects, ({ one }) => ({
   user: one(users, { fields: [videoProjects.userId], references: [users.id] }),
+}));
+
+export const charactersRelations = relations(characters, ({ one }) => ({
+  user: one(users, { fields: [characters.userId], references: [users.id] }),
 }));

@@ -15,6 +15,7 @@ import { Queue } from "bullmq";
 import { VideoService } from "./services/video.service";
 import { storyboardRoutes } from "./routes/storyboard.routes";
 import { voiceRoutes } from "./routes/voice.routes";
+import { characterRoutes } from "./routes/character.routes";
 
 // Load environment variables
 const PORT = process.env.PORT || 6969;
@@ -89,6 +90,10 @@ const start = async () => {
             name: "Health",
             description: "Health check endpoints",
           },
+          {
+            name: "Character",
+            description: "Character endpoints",
+          },
         ],
       },
       transform: fastifyZodOpenApiTransform,
@@ -132,6 +137,7 @@ const start = async () => {
       // Register protected routes
       await instance.register(storyboardRoutes);
       await instance.register(voiceRoutes);
+      await instance.register(characterRoutes);
     });
 
     // Global error handling
