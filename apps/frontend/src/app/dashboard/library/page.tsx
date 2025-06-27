@@ -109,7 +109,7 @@ const getProjectTags = (project: VideoProject): string[] => {
         (variant) => variant.id === project.storyboard?.selectedVariantId,
       )
     : null;
-  const tags = storyboard?.tags || [];
+  const tags = storyboard?.tags ?? [];
   return tags;
 };
 
@@ -136,7 +136,7 @@ const getThumbnail = (project: VideoProject): string => {
   }
 
   if (project.breakdown?.scenes && project.breakdown.scenes.length > 0) {
-    return project.breakdown.scenes[0]?.imageUrl || DEFAULT_THUMBNAIL;
+    return project.breakdown.scenes[0]?.imageUrl ?? DEFAULT_THUMBNAIL;
   }
 
   return DEFAULT_THUMBNAIL;
@@ -151,7 +151,7 @@ const getProjectDuration = (project: VideoProject): string => {
 
   if (project.breakdown?.scenes) {
     const totalDuration = project.breakdown.scenes.reduce(
-      (sum, scene) => sum + (scene.duration || 5), // Default 5 seconds per scene
+      (sum, scene) => sum + (scene.duration ?? 5), // Default 5 seconds per scene
       0,
     );
     const minutes = Math.floor(totalDuration / 60);
@@ -194,11 +194,11 @@ export default function VideoLibraryPage() {
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
         );
       case "most-viewed":
-        return [...projects].sort((a, b) => (b.views || 0) - (a.views || 0));
+        return [...projects].sort((a, b) => (b.views ?? 0) - (a.views ?? 0));
       case "alphabetical":
         return [...projects].sort((a, b) =>
-          (getProjectName(a) || "Untitled").localeCompare(
-            getProjectName(b) || "Untitled",
+          (getProjectName(a) ?? "Untitled").localeCompare(
+            getProjectName(b) ?? "Untitled",
           ),
         );
       default:
@@ -210,7 +210,7 @@ export default function VideoLibraryPage() {
     projects.filter((project) => {
       const displayStatus = getDisplayStatus(project.status);
       const projectName = getProjectName(project);
-      const description = project.concept?.content || "";
+      const description = project.concept?.content ?? "";
 
       const matchesSearch =
         projectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -237,7 +237,7 @@ export default function VideoLibraryPage() {
       console.log("Deleting project:", selectedProject.id);
       toast.success("Project deleted successfully");
       await refetch();
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete project");
     } finally {
       setIsDeleteDialogOpen(false);
@@ -264,7 +264,7 @@ export default function VideoLibraryPage() {
       console.log("Duplicating project:", project.id);
       toast.success("Project duplicated successfully");
       await refetch();
-    } catch (error) {
+    } catch {
       toast.error("Failed to duplicate project");
     }
   };
@@ -555,7 +555,7 @@ function ProjectCardGrid({
           <div className="min-w-0 flex-1">
             <h3 className="mb-1 truncate font-semibold">{projectName}</h3>
             <p className="text-muted-foreground mb-2 line-clamp-2 text-sm">
-              {project.concept?.content || "No description"}
+              {project.concept?.content ?? "No description"}
             </p>
           </div>
 
@@ -628,7 +628,7 @@ function ProjectCardGrid({
           </div>
           <div className="flex items-center gap-1">
             <Eye className="h-3 w-3" />
-            {(project.views || 0).toLocaleString()} views
+            {(project.views ?? 0).toLocaleString()} views
           </div>
         </div>
       </CardContent>
@@ -702,7 +702,7 @@ function ProjectCardList({
                   </Badge>
                 </div>
                 <p className="text-muted-foreground mb-2 line-clamp-1 text-sm">
-                  {project.concept?.content || "No description"}
+                  {project.concept?.content ?? "No description"}
                 </p>
 
                 {/* Tags */}
@@ -722,7 +722,7 @@ function ProjectCardList({
                   </div>
                   <div className="flex items-center gap-1">
                     <Eye className="h-3 w-3" />
-                    {(project.views || 0).toLocaleString()}
+                    {(project.views ?? 0).toLocaleString()} views
                   </div>
                   {project.settings?.aspectRatio && (
                     <div className="flex items-center gap-1">

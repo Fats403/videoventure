@@ -3,6 +3,7 @@ import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { TRPCError } from "@trpc/server";
 import { env } from "@/env";
 import { characters, eq, desc, and } from "@video-venture/shared/server";
+import { handleApiError } from "@/server/utils/error-handler";
 
 // Character creation/update schema
 const characterInputSchema = z.object({
@@ -10,6 +11,17 @@ const characterInputSchema = z.object({
   description: z.string().min(10, "Description must be at least 10 characters"),
   appearance: z.string().optional(),
   age: z.string().optional(),
+});
+
+// Frontend-specific API response schemas (only needed for inference/validation here)
+const apiCharacterResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  appearance: z.string().optional(),
+  age: z.string().optional(),
+  image: z.string().url(),
+  createdAt: z.string(),
 });
 
 export const characterRouter = createTRPCRouter({
@@ -84,25 +96,27 @@ export const characterRouter = createTRPCRouter({
         );
 
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.message || "Failed to create character");
+          const errorData = (await response.json()) as unknown;
+          handleApiError(errorData, "Failed to create character");
         }
 
-        const createdCharacter = await response.json();
+        const responseData = (await response.json()) as unknown;
+        const createdCharacter = apiCharacterResponseSchema.parse(responseData);
 
         // Return the character in the format expected by the frontend
         return {
           id: createdCharacter.id,
           name: createdCharacter.name,
           description: createdCharacter.description,
-          appearance: createdCharacter.appearance,
-          age: createdCharacter.age,
+          appearance: createdCharacter.appearance ?? null,
+          age: createdCharacter.age ?? null,
           imageUrl: createdCharacter.image,
           storageKey: "", // Not exposed to frontend
           createdAt: new Date(createdCharacter.createdAt),
           updatedAt: new Date(createdCharacter.createdAt),
         };
       } catch (error) {
+        if (error instanceof TRPCError) throw error;
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Failed to create character",
@@ -137,25 +151,29 @@ export const characterRouter = createTRPCRouter({
         );
 
         if (!response.ok) {
-          const error = await response.json();
+          const errorData = (await response.json()) as unknown;
+
           if (response.status === 404) {
             throw new TRPCError({
               code: "NOT_FOUND",
               message: "Character not found",
             });
           }
-          throw new Error(error.message || "Failed to update character");
+
+          handleApiError(errorData, "Failed to update character");
         }
 
-        const updatedCharacterResponse = await response.json();
+        const responseData = (await response.json()) as unknown;
+        const updatedCharacterResponse =
+          apiCharacterResponseSchema.parse(responseData);
 
         // Return in the format expected by the frontend
         return {
           id: updatedCharacterResponse.id,
           name: updatedCharacterResponse.name,
           description: updatedCharacterResponse.description,
-          appearance: updatedCharacterResponse.appearance,
-          age: updatedCharacterResponse.age,
+          appearance: updatedCharacterResponse.appearance ?? null,
+          age: updatedCharacterResponse.age ?? null,
           imageUrl: updatedCharacterResponse.image,
           storageKey: "", // Not exposed to frontend
           createdAt: new Date(updatedCharacterResponse.createdAt),
@@ -190,14 +208,16 @@ export const characterRouter = createTRPCRouter({
         );
 
         if (!response.ok) {
-          const error = await response.json();
+          const errorData = (await response.json()) as unknown;
+
           if (response.status === 404) {
             throw new TRPCError({
               code: "NOT_FOUND",
               message: "Character not found",
             });
           }
-          throw new Error(error.message || "Failed to delete character");
+
+          handleApiError(errorData, "Failed to delete character");
         }
 
         return { success: true };

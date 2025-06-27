@@ -12,7 +12,7 @@ import {
 } from "../schemas/storyboard.schema";
 import { requireAuth } from "../middlewares/auth.middleware";
 import { getErrorMessage } from "../utils/getErrorMessage";
-import { ErrorResponseSchema } from "../schemas/error.schema";
+import { errorResponseSchema } from "@video-venture/shared";
 
 export const storyboardRoutes: FastifyPluginAsync = async function (fastify) {
   const storyboardService = new StoryboardService();
@@ -30,8 +30,8 @@ export const storyboardRoutes: FastifyPluginAsync = async function (fastify) {
       body: StoryboardRequestSchema,
       response: {
         200: StoryboardCreationResponseSchema,
-        401: ErrorResponseSchema,
-        500: ErrorResponseSchema,
+        401: errorResponseSchema,
+        500: errorResponseSchema,
       },
     } satisfies FastifyZodOpenApiSchema,
     preHandler: requireAuth,
@@ -63,8 +63,8 @@ export const storyboardRoutes: FastifyPluginAsync = async function (fastify) {
       body: StoryboardRequestSchema,
       response: {
         200: StoryboardResponseSchema,
-        401: ErrorResponseSchema,
-        500: ErrorResponseSchema,
+        401: errorResponseSchema,
+        500: errorResponseSchema,
       },
     } satisfies FastifyZodOpenApiSchema,
     preHandler: requireAuth,

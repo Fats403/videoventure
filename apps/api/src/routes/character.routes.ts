@@ -8,12 +8,11 @@ import { CharacterService } from "../services/character.service";
 import {
   CharacterCreationRequestSchema,
   CharacterCreationResponseSchema,
-  CharacterListResponseSchema,
 } from "../schemas/character.schema";
 import { requireAuth } from "../middlewares/auth.middleware";
 import { getErrorMessage } from "../utils/getErrorMessage";
-import { ErrorResponseSchema } from "../schemas/error.schema";
 import { z } from "zod";
+import { errorResponseSchema } from "@video-venture/shared";
 
 export const characterRoutes: FastifyPluginAsync = async function (fastify) {
   const characterService = new CharacterService();
@@ -31,8 +30,8 @@ export const characterRoutes: FastifyPluginAsync = async function (fastify) {
       body: CharacterCreationRequestSchema,
       response: {
         200: CharacterCreationResponseSchema,
-        401: ErrorResponseSchema,
-        500: ErrorResponseSchema,
+        401: errorResponseSchema,
+        500: errorResponseSchema,
       },
     } satisfies FastifyZodOpenApiSchema,
     preHandler: requireAuth,
@@ -69,9 +68,9 @@ export const characterRoutes: FastifyPluginAsync = async function (fastify) {
       body: CharacterCreationRequestSchema,
       response: {
         200: CharacterCreationResponseSchema,
-        401: ErrorResponseSchema,
-        404: ErrorResponseSchema,
-        500: ErrorResponseSchema,
+        401: errorResponseSchema,
+        404: errorResponseSchema,
+        500: errorResponseSchema,
       },
     } satisfies FastifyZodOpenApiSchema,
     preHandler: requireAuth,
@@ -119,9 +118,9 @@ export const characterRoutes: FastifyPluginAsync = async function (fastify) {
           success: z.boolean(),
           message: z.string(),
         }),
-        401: ErrorResponseSchema,
-        404: ErrorResponseSchema,
-        500: ErrorResponseSchema,
+        401: errorResponseSchema,
+        404: errorResponseSchema,
+        500: errorResponseSchema,
       },
     } satisfies FastifyZodOpenApiSchema,
     preHandler: requireAuth,

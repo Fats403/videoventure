@@ -194,6 +194,12 @@ export const videoProjectSchema = z.object({
   updatedAt: z.date(),
 });
 
+export const errorResponseSchema = z.object({
+  statusCode: z.number(),
+  error: z.string(),
+  message: z.string(),
+});
+
 // Export inferred types
 export type UserPreferences = z.infer<typeof userPreferencesSchema>;
 export type ConceptData = z.infer<typeof conceptDataSchema>;
@@ -215,3 +221,4 @@ export type JobType = z.infer<typeof jobTypeSchema>;
 export type User = z.infer<typeof userSchema>;
 export type VideoProject = z.infer<typeof videoProjectSchema>;
 export type Job = z.infer<typeof jobSchema>;
+export type ErrorResponse = z.infer<typeof errorResponseSchema>;

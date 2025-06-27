@@ -25,11 +25,9 @@ import {
   Palette,
   X,
   Camera,
-  RefreshCw,
   ImageIcon,
   Trash2,
   Loader2,
-  Check,
   ChevronDown,
 } from "lucide-react";
 import {
@@ -194,7 +192,7 @@ export function SettingsStep({ form }: SettingsStepProps) {
   });
 
   // Get selected character IDs from form
-  const selectedCharacterIds = form.watch("settings.characters") || [];
+  const selectedCharacterIds = form.watch("settings.characters") ?? [];
 
   // Get full character objects for selected IDs
   const selectedCharacters = allCharacters.filter((char) =>
@@ -253,7 +251,7 @@ export function SettingsStep({ form }: SettingsStepProps) {
   const handleCharacterSaved = async (character: Character) => {
     if (!editingCharacter) {
       // Auto-select the new character
-      const currentIds = form.getValues("settings.characters") || [];
+      const currentIds = form.getValues("settings.characters") ?? [];
       form.setValue("settings.characters", [...currentIds, character.id]);
     }
 
@@ -268,20 +266,20 @@ export function SettingsStep({ form }: SettingsStepProps) {
       await deleteCharacterMutation.mutateAsync({ id: characterId });
 
       // Remove from selected characters
-      const currentIds = form.getValues("settings.characters") || [];
+      const currentIds = form.getValues("settings.characters") ?? [];
       form.setValue(
         "settings.characters",
         currentIds.filter((id) => id !== characterId),
       );
 
       toast.success("Character deleted!");
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete character");
     }
   };
 
   const handleCharacterToggle = (characterId: string, checked: boolean) => {
-    const currentIds = form.getValues("settings.characters") || [];
+    const currentIds = form.getValues("settings.characters") ?? [];
     if (checked) {
       form.setValue("settings.characters", [...currentIds, characterId]);
     } else {
@@ -293,7 +291,7 @@ export function SettingsStep({ form }: SettingsStepProps) {
   };
 
   const handleRemoveCharacterFromProject = (characterId: string) => {
-    const currentIds = form.getValues("settings.characters") || [];
+    const currentIds = form.getValues("settings.characters") ?? [];
     form.setValue(
       "settings.characters",
       currentIds.filter((id) => id !== characterId),
@@ -789,9 +787,9 @@ function CharacterForm({
   onSave: (character: Character) => void;
   onDelete: () => void;
   onCancel: () => void;
-  createMutation: any;
-  updateMutation: any;
-  deleteMutation?: any;
+  createMutation: ReturnType<typeof api.character.create.useMutation>;
+  updateMutation: ReturnType<typeof api.character.update.useMutation>;
+  deleteMutation?: ReturnType<typeof api.character.delete.useMutation>;
 }) {
   const characterForm = useForm<CharacterFormData>({
     resolver: zodResolver(characterFormSchema),
@@ -818,15 +816,15 @@ function CharacterForm({
           data,
         });
         // Update the preview image
-        setGeneratedImageUrl(savedCharacter.imageUrl || "");
+        setGeneratedImageUrl(savedCharacter.imageUrl ?? "");
       } else {
         // Create new character
         savedCharacter = await createMutation.mutateAsync(data);
-        setGeneratedImageUrl(savedCharacter.imageUrl || "");
+        setGeneratedImageUrl(savedCharacter.imageUrl ?? "");
       }
 
       onSave(savedCharacter);
-    } catch (error) {
+    } catch {
       toast.error(
         character ? "Failed to update character" : "Failed to create character",
       );
@@ -838,9 +836,9 @@ function CharacterForm({
     onDelete(); // Simple callback - no async handling needed
   };
 
-  const isLoading = createMutation.isPending || updateMutation.isPending;
-  const isDeleting = deleteMutation?.isPending || false;
-  const isAnyLoading = isLoading || isDeleting;
+  const isLoading = createMutation.isPending ?? updateMutation.isPending;
+  const isDeleting = deleteMutation?.isPending ?? false;
+  const isAnyLoading = isLoading ?? isDeleting;
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_280px]">

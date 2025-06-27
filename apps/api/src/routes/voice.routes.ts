@@ -11,7 +11,7 @@ import {
 } from "../schemas/voice.schema";
 import { requireAuth } from "../middlewares/auth.middleware";
 import { getErrorMessage } from "../utils/getErrorMessage";
-import { ErrorResponseSchema } from "../schemas/error.schema";
+import { errorResponseSchema } from "@video-venture/shared";
 
 export const voiceRoutes: FastifyPluginAsync = async function (fastify) {
   const voiceService = new VoiceService();
@@ -29,8 +29,8 @@ export const voiceRoutes: FastifyPluginAsync = async function (fastify) {
       querystring: GetVoicesRequestSchema,
       response: {
         200: GetVoicesResponseSchema,
-        401: ErrorResponseSchema,
-        500: ErrorResponseSchema,
+        401: errorResponseSchema,
+        500: errorResponseSchema,
       },
     } satisfies FastifyZodOpenApiSchema,
     preHandler: requireAuth,
