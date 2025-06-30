@@ -11,12 +11,21 @@ import {
   StoryboardResponse,
   StoryboardLLMResponseSchema,
   StoryboardLLMResponse,
+  SceneBreakdownRequest,
+  SceneBreakdownResponse,
+  SceneBreakdownLLMResponseSchema,
+  SceneBreakdownLLMResponse,
 } from "../schemas/storyboard.schema";
+import { nanoid } from "nanoid";
+import type { Character, Scene } from "@video-venture/shared";
+import { getFalModel } from "@video-venture/shared";
+import { ImageProcessor } from "../modules/image-processor";
 
 export class StoryboardService {
   private genAI: GoogleGenerativeAI;
   private modelName: string = "gemini-2.0-flash";
   private maxAttempts = 3;
+  private imageProcessor: ImageProcessor;
 
   constructor(apiKey?: string) {
     const key = apiKey ?? process.env.GEMINI_API_KEY;
@@ -24,6 +33,7 @@ export class StoryboardService {
       throw new Error("GEMINI_API_KEY not set.");
     }
     this.genAI = new GoogleGenerativeAI(key);
+    this.imageProcessor = new ImageProcessor();
   }
 
   private buildSystemPrompt(variantCount: number = 2, format: string): Content {
@@ -297,5 +307,425 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
     }
 
     return prompt;
+  }
+
+  /**
+   * Generate scene breakdown from storyboard and settings with actual image generation
+   */
+  async generateSceneBreakdown(
+    breakdownData: SceneBreakdownRequest
+  ): Promise<SceneBreakdownResponse> {
+    console.log(`🎬 Generating scene breakdown from storyboard`);
+
+    const systemInstruction =
+      this.buildSceneBreakdownSystemPrompt(breakdownData);
+    const userPrompt = this.buildSceneBreakdownUserPrompt(breakdownData);
+
+    const validatedResponse = await this.callSceneBreakdownGeminiAPI(
+      systemInstruction,
+      userPrompt
+    );
+
+    // Generate actual images for each scene using the new approach
+    const scenes: Scene[] = await Promise.all(
+      validatedResponse.scenes.map(async (scene, index) => {
+        try {
+          const sceneImageUrl = await this.generateSceneImage(
+            scene.imageDescription,
+            breakdownData.characters ?? [],
+            index
+          );
+
+          return {
+            id: nanoid(),
+            imageUrl: sceneImageUrl,
+            imageDescription: this.enhanceImageDescriptionWithCharacters(
+              scene.imageDescription,
+              breakdownData.characters ?? []
+            ),
+            voiceOver: scene.voiceOver,
+            duration: scene.duration,
+            order: index + 1,
+          };
+        } catch (error) {
+          console.error(
+            `❌ Failed to generate image for scene ${index + 1}:`,
+            error
+          );
+          // Fallback to placeholder if image generation fails
+          return {
+            id: nanoid(),
+            imageUrl: this.generatePlaceholderImageUrl(
+              scene.imageDescription,
+              index
+            ),
+            imageDescription: this.enhanceImageDescriptionWithCharacters(
+              scene.imageDescription,
+              breakdownData.characters ?? []
+            ),
+            voiceOver: scene.voiceOver,
+            duration: scene.duration,
+            order: index + 1,
+          };
+        }
+      })
+    );
+
+    return {
+      scenes,
+      musicDescription: validatedResponse.musicDescription,
+    };
+  }
+
+  /**
+   * Generate scene image using the new single-prompt approach with character references
+   */
+  private async generateSceneImage(
+    imageDescription: string,
+    characters: Character[],
+    sceneIndex: number
+  ): Promise<string> {
+    console.log(
+      `🎨 Generating scene image ${sceneIndex + 1}: ${imageDescription}`
+    );
+
+    try {
+      // Get characters mentioned in this scene
+      const mentionedCharacters = this.getMentionedCharacters(
+        imageDescription,
+        characters
+      );
+
+      console.log(
+        `👥 Scene ${sceneIndex + 1} includes ${mentionedCharacters.length} characters`
+      );
+
+      // Build the complete prompt for scene generation
+      const scenePrompt = this.buildSceneWithCharactersPrompt(
+        imageDescription,
+        mentionedCharacters
+      );
+
+      // Generate scene with character references using the new approach
+      const sceneImageBuffer =
+        await this.imageProcessor.generateSceneWithCharacters(
+          scenePrompt,
+          mentionedCharacters
+        );
+
+      // Upload to storage
+      const timestamp = Date.now();
+      const storageKey = `scenes/scene-${sceneIndex + 1}-${timestamp}.webp`;
+
+      return await this.imageProcessor.uploadImageToStorage(
+        sceneImageBuffer,
+        storageKey
+      );
+    } catch (error) {
+      console.error(
+        `❌ Scene image generation failed for scene ${sceneIndex + 1}:`,
+        error
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Build enhanced prompt for scene generation with character context
+   * @param sceneDescription - Original scene description
+   * @param characters - Array of characters to include
+   * @returns Enhanced prompt for image generation
+   */
+  private buildSceneWithCharactersPrompt(
+    sceneDescription: string,
+    characters: Character[]
+  ): string {
+    if (characters.length === 0) {
+      return sceneDescription;
+    }
+
+    let prompt = `Create a scene based on this description: ${sceneDescription}\n\n`;
+
+    prompt += `Include these characters in the scene:\n`;
+    characters.forEach((char, index) => {
+      prompt += `${index + 1}. ${char.name}: ${char.description}`;
+      if (char.appearance) prompt += ` (Appearance: ${char.appearance})`;
+      if (char.age) prompt += ` (Age: ${char.age})`;
+      prompt += `\n`;
+    });
+
+    prompt += `\nUse the reference images provided to maintain character consistency. `;
+    prompt += `Integrate the characters naturally into the scene with appropriate lighting, perspective, and composition. `;
+    prompt += `Ensure the characters are positioned and posed according to the scene description. `;
+    prompt += `Create a cohesive, cinematic image that tells the story effectively.`;
+
+    return prompt;
+  }
+
+  /**
+   * Get characters mentioned in the image description
+   */
+  private getMentionedCharacters(
+    imageDescription: string,
+    characters: Character[]
+  ): Character[] {
+    return characters.filter((char) =>
+      imageDescription.toLowerCase().includes(char.name.toLowerCase())
+    );
+  }
+
+  private buildSceneBreakdownSystemPrompt(
+    data: SceneBreakdownRequest
+  ): Content {
+    const videoModel = getFalModel(data.settings.videoModel);
+    const maxDuration = Math.max(...videoModel.supportedDurations);
+    const minDuration = Math.min(...videoModel.supportedDurations);
+
+    let characterContext = "";
+    if (data.characters && data.characters.length > 0) {
+      characterContext = `\n\nCHARACTERS AVAILABLE:
+${data.characters.map((char) => `- ${char.name}: ${char.description}${char.appearance ? ` (Appearance: ${char.appearance})` : ""}${char.age ? ` (Age: ${char.age})` : ""}`).join("\n")}
+
+When a character appears in a scene, include their name and key visual details in the imageDescription. Be consistent with their appearance throughout all scenes.`;
+    }
+
+    const promptText = `You are an expert video producer creating a detailed scene breakdown for video generation.
+
+TASK: Break down the provided storyboard into ${minDuration === maxDuration ? maxDuration : `${minDuration}-${maxDuration}`} second video scenes AND create a cohesive music description.
+
+VIDEO SPECIFICATIONS:
+- Aspect Ratio: ${data.settings.aspectRatio}
+- Video Model: ${data.settings.videoModel}
+- Scene Duration: ${minDuration === maxDuration ? `${maxDuration} seconds each` : `${minDuration}-${maxDuration} seconds each`}
+- Style: ${data.settings.videoStyle !== "none" ? data.settings.videoStyle : "Natural/realistic"}
+${data.settings.cinematicInspiration ? `- Cinematic Style: ${data.settings.cinematicInspiration}` : ""}${characterContext}
+
+REQUIREMENTS FOR EACH SCENE:
+1. imageDescription: Detailed visual description for image generation (2-3 sentences)
+   - Include specific visual details, lighting, composition
+   - Mention characters by name if they appear
+   - Include environment and mood details
+   - Make it suitable for AI image generation
+
+2. voiceOver: Natural narration text that will be converted to speech
+   - Should flow naturally when spoken aloud
+   - Match the duration timing
+   - Advance the story meaningfully
+
+3. duration: Scene length in seconds (${minDuration === maxDuration ? maxDuration : `between ${minDuration} and ${maxDuration}`})
+   - Consider pacing and content complexity
+   - Allow time for visual storytelling
+
+4. order: Sequential scene number starting from 1
+
+MUSIC DESCRIPTION REQUIREMENTS:
+Create a comprehensive music description that:
+- Complements the overall narrative and emotional arc
+- Matches the tone and style of the storyboard
+- Considers the cinematic inspiration if provided
+- Supports the pacing and flow of all scenes
+- Includes specific musical elements (instruments, tempo, mood)
+
+GUIDELINES:
+- Create 4-8 scenes total (aim for balanced pacing)
+- Each scene should advance the story significantly
+- Ensure visual variety between scenes
+- Match the tone and style of the original storyboard
+- Keep character appearances consistent
+- Make scenes cinematic and engaging
+- Ensure music description enhances the overall video experience
+
+OUTPUT FORMAT (JSON only, no other text):
+{
+  "scenes": [
+    {
+      "imageDescription": "Detailed scene description for image generation",
+      "voiceOver": "Natural narration text for this scene",
+      "duration": ${maxDuration},
+      "order": 1
+    }
+  ],
+  "musicDescription": "Comprehensive description of background music that complements the entire video, including specific musical elements, tempo, mood, and how it supports the narrative flow"
+}`;
+
+    return { role: "system", parts: [{ text: promptText }] };
+  }
+
+  private buildSceneBreakdownUserPrompt(data: SceneBreakdownRequest): string {
+    const selectedStoryboard = data.storyboard.variants.find(
+      (v) => v.id === data.storyboard.selectedVariantId
+    );
+
+    if (!selectedStoryboard) {
+      throw new Error("No selected storyboard variant found");
+    }
+
+    let prompt = `Break down this storyboard into scenes:\n\n`;
+    prompt += `STORYBOARD TITLE: ${selectedStoryboard.title}\n`;
+    prompt += `STORYBOARD CONTENT:\n${selectedStoryboard.content}\n\n`;
+
+    if (data.storyboard.customContent) {
+      prompt += `CUSTOM MODIFICATIONS:\n${data.storyboard.customContent}\n\n`;
+    }
+
+    prompt += `PROJECT SETTINGS:\n`;
+    prompt += `- Project: ${data.settings.projectName}\n`;
+    prompt += `- Video Model: ${data.settings.videoModel}\n`;
+    prompt += `- Aspect Ratio: ${data.settings.aspectRatio}\n`;
+    if (data.settings.videoStyle !== "none") {
+      prompt += `- Visual Style: ${data.settings.videoStyle}\n`;
+    }
+    if (data.settings.cinematicInspiration) {
+      prompt += `- Cinematic Inspiration: ${data.settings.cinematicInspiration}\n`;
+    }
+
+    if (data.characters && data.characters.length > 0) {
+      prompt += `\nCHARACTERS TO INCLUDE:\n`;
+      data.characters.forEach((char) => {
+        prompt += `- ${char.name}: ${char.description}\n`;
+        if (char.appearance) prompt += `  Appearance: ${char.appearance}\n`;
+        if (char.age) prompt += `  Age: ${char.age}\n`;
+      });
+    }
+
+    prompt += `\nCreate a scene breakdown that brings this storyboard to life as a compelling video.`;
+
+    return prompt;
+  }
+
+  private enhanceImageDescriptionWithCharacters(
+    description: string,
+    characters: Character[]
+  ): string {
+    if (characters.length === 0) return description;
+
+    // Check if any character names are mentioned in the description
+    const mentionedCharacters = characters.filter((char) =>
+      description.toLowerCase().includes(char.name.toLowerCase())
+    );
+
+    if (mentionedCharacters.length === 0) return description;
+
+    // Enhance description with character details
+    let enhancedDescription = description;
+
+    mentionedCharacters.forEach((char) => {
+      const characterDetails = [];
+      if (char.appearance) characterDetails.push(char.appearance);
+      if (char.age) characterDetails.push(`age ${char.age}`);
+
+      if (characterDetails.length > 0) {
+        const details = characterDetails.join(", ");
+        enhancedDescription += ` ${char.name} is shown with ${details}.`;
+      }
+    });
+
+    return enhancedDescription;
+  }
+
+  private generatePlaceholderImageUrl(
+    description: string,
+    index: number
+  ): string {
+    // Generate a placeholder image URL - in production, this would be replaced with actual generated images
+    const encodedDescription = encodeURIComponent(
+      description.substring(0, 100)
+    );
+    return `https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800&h=600&fit=crop&q=80&scene=${index}&desc=${encodedDescription}`;
+  }
+
+  private async callSceneBreakdownGeminiAPI(
+    systemInstruction: Content,
+    userPrompt: string
+  ): Promise<SceneBreakdownLLMResponse> {
+    const generationConfig: GenerationConfig = {
+      temperature: 0.7, // Slightly lower temperature for more consistent scene structure
+      responseMimeType: "application/json",
+    };
+
+    const safetySettings: SafetySetting[] = [
+      {
+        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+    ];
+
+    const model = this.genAI.getGenerativeModel({
+      model: this.modelName,
+      systemInstruction: systemInstruction,
+      generationConfig,
+      safetySettings,
+    });
+
+    let attempts = 0;
+    let lastError: Error | null = null;
+
+    while (attempts < this.maxAttempts) {
+      attempts++;
+      try {
+        console.log(`🔄 Scene breakdown attempt ${attempts}...`);
+
+        const result = await model.generateContent(userPrompt);
+        const responseText = result.response.text();
+
+        // Parse JSON
+        let parsedResponse;
+        try {
+          parsedResponse = JSON.parse(responseText);
+        } catch (jsonError) {
+          throw new Error(
+            `Invalid JSON response: ${jsonError instanceof Error ? jsonError.message : "Unknown JSON error"}`
+          );
+        }
+
+        // Validate schema
+        const validationResult =
+          SceneBreakdownLLMResponseSchema.safeParse(parsedResponse);
+
+        if (!validationResult.success) {
+          console.warn(
+            `🔄 Attempt ${attempts} - Schema validation failed:`,
+            validationResult.error.message
+          );
+          console.warn(`📄 Response that failed validation:`, parsedResponse);
+          throw new Error(
+            `Schema validation failed: ${validationResult.error.message}`
+          );
+        }
+
+        console.log(
+          `✅ Attempt ${attempts} - Successfully generated scene breakdown with ${validationResult.data.scenes.length} scenes`
+        );
+        return validationResult.data;
+      } catch (error: any) {
+        lastError = error;
+        console.warn(
+          `🔄 Scene breakdown attempt ${attempts} failed:`,
+          error.message
+        );
+
+        if (attempts < this.maxAttempts) {
+          console.log(`⏳ Retrying in ${1000 * attempts}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempts));
+        }
+      }
+    }
+
+    throw (
+      lastError ??
+      new Error("Failed to generate valid scene breakdown after all attempts")
+    );
   }
 }

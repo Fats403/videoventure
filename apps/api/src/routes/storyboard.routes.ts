@@ -9,6 +9,8 @@ import {
   StoryboardRequestSchema,
   StoryboardCreationResponseSchema,
   StoryboardResponseSchema,
+  SceneBreakdownRequestSchema,
+  SceneBreakdownResponseSchema,
 } from "../schemas/storyboard.schema";
 import { requireAuth } from "../middlewares/auth.middleware";
 import { getErrorMessage } from "../utils/getErrorMessage";
@@ -78,6 +80,40 @@ export const storyboardRoutes: FastifyPluginAsync = async function (fastify) {
         reply.status(500).send({
           statusCode: 500,
           error: "Failed to generate additional variant",
+          message: getErrorMessage(error),
+        });
+      }
+    },
+  });
+
+  // New scene breakdown endpoint
+  fastify.withTypeProvider<FastifyZodOpenApiTypeProvider>().route({
+    method: "POST",
+    url: "/storyboard/breakdown",
+    schema: {
+      tags: ["Storyboard"],
+      summary: "Generate scene breakdown",
+      description:
+        "Generate a detailed scene breakdown from a selected storyboard variant and project settings. This creates individual scenes with image descriptions, voice-over text, and timing.",
+      security: [{ bearerAuth: [] }],
+      body: SceneBreakdownRequestSchema,
+      response: {
+        200: SceneBreakdownResponseSchema,
+        401: errorResponseSchema,
+        500: errorResponseSchema,
+      },
+    } satisfies FastifyZodOpenApiSchema,
+    preHandler: requireAuth,
+    handler: async (request, reply) => {
+      try {
+        const breakdown = await storyboardController.generateSceneBreakdown(
+          request.body
+        );
+        reply.send(breakdown);
+      } catch (error: unknown) {
+        reply.status(500).send({
+          statusCode: 500,
+          error: "Failed to generate scene breakdown",
           message: getErrorMessage(error),
         });
       }

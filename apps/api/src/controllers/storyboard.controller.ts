@@ -1,5 +1,8 @@
 import { StoryboardService } from "../services/storyboard.service";
-import { StoryboardRequest } from "../schemas/storyboard.schema";
+import {
+  StoryboardRequest,
+  SceneBreakdownRequest,
+} from "../schemas/storyboard.schema";
 
 export class StoryboardController {
   private storyboardService: StoryboardService;
@@ -14,5 +17,9 @@ export class StoryboardController {
 
   async generateAdditionalVariant(data: StoryboardRequest) {
     return await this.storyboardService.generateAdditionalVariant(data);
+  }
+
+  async generateSceneBreakdown(data: SceneBreakdownRequest) {
+    return await this.storyboardService.generateSceneBreakdown(data);
   }
 }

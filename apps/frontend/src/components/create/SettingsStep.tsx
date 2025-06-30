@@ -175,19 +175,19 @@ export function SettingsStep({ form }: SettingsStepProps) {
 
   const createCharacterMutation = api.character.create.useMutation({
     onSuccess: () => {
-      refetchCharacters();
+      void refetchCharacters();
     },
   });
 
   const updateCharacterMutation = api.character.update.useMutation({
     onSuccess: () => {
-      refetchCharacters();
+      void refetchCharacters();
     },
   });
 
   const deleteCharacterMutation = api.character.delete.useMutation({
     onSuccess: () => {
-      refetchCharacters();
+      void refetchCharacters();
     },
   });
 
@@ -300,7 +300,7 @@ export function SettingsStep({ form }: SettingsStepProps) {
 
   const handleDelete = () => {
     if (!editingCharacter) return;
-    handleDeleteCharacter(editingCharacter.id);
+    void handleDeleteCharacter(editingCharacter.id);
   };
 
   return (
