@@ -27,8 +27,8 @@ import {
   Clock,
   Volume2,
   Image as ImageIcon,
-  Sparkles,
   CheckCircle2,
+  Music,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -37,9 +37,10 @@ import type { Scene } from "@video-venture/shared";
 
 interface BreakdownStepProps {
   form: UseFormReturn<CompleteVideoForm>;
+  projectId?: string;
 }
 
-export function BreakdownStep({ form }: BreakdownStepProps) {
+export function BreakdownStep({ form, projectId }: BreakdownStepProps) {
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState<string | null>(null);
@@ -48,6 +49,7 @@ export function BreakdownStep({ form }: BreakdownStepProps) {
   // Get breakdown data from form
   const breakdownData = form.watch("breakdown");
   const scenes = breakdownData?.scenes ?? [];
+  const musicDescription = breakdownData?.musicDescription;
 
   // Get settings data for display
   const settingsData = form.watch("settings");
@@ -128,43 +130,11 @@ export function BreakdownStep({ form }: BreakdownStepProps) {
     }
   };
 
-  // If no scenes, show empty state
-  if (!scenes.length) {
-    return (
-      <div className="space-y-8">
-        <div className="text-center">
-          <h1 className="mb-2 text-3xl font-bold">Final Storyboard Review</h1>
-          <p className="text-muted-foreground text-lg">
-            Generate scenes from your storyboard to continue
-          </p>
-        </div>
-
-        <Card className="border-2">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <ImageIcon className="text-muted-foreground mx-auto mb-4 h-12 w-12" />
-            <p className="text-muted-foreground mb-4">
-              No scenes generated yet
-            </p>
-            <Button
-              onClick={() => {
-                // TODO: Generate scenes from storyboard
-                console.log("Generate scenes from storyboard");
-              }}
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              Generate Scenes
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8">
       {/* Header Section */}
       <div className="text-center">
-        <h1 className="mb-2 text-3xl font-bold">Final Storyboard Review</h1>
+        <h1 className="mb-2 text-3xl font-bold">Scene Breakdown</h1>
         <p className="text-muted-foreground text-lg">
           Review your generated scenes and make final adjustments before
           creating your video
@@ -183,6 +153,15 @@ export function BreakdownStep({ form }: BreakdownStepProps) {
             </div>
             <div className="text-center">
               <div className="text-primary text-2xl font-bold">
+                {scenes.reduce((sum, scene) => sum + (scene?.duration ?? 0), 0)}
+                s
+              </div>
+              <div className="text-muted-foreground text-sm">
+                Total Duration
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-primary text-2xl font-bold">
                 {settingsData?.aspectRatio ?? "16:9"}
               </div>
               <div className="text-muted-foreground text-sm">Aspect Ratio</div>
@@ -197,13 +176,30 @@ export function BreakdownStep({ form }: BreakdownStepProps) {
         </CardContent>
       </Card>
 
+      {/* Music Description */}
+      {musicDescription && (
+        <Card className="border-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Music className="text-primary h-5 w-5" />
+              Background Music
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground leading-relaxed">
+              {musicDescription}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Scene Management */}
       <Card className="border-2">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <ImageIcon className="text-primary h-5 w-5" />
-              Scene Breakdown
+              Scene Breakdown ({scenes.length} scenes)
             </CardTitle>
             <Button onClick={handleAddScene} className="gap-2">
               <Plus className="h-4 w-4" />
@@ -461,6 +457,7 @@ export function BreakdownStep({ form }: BreakdownStepProps) {
                 </h3>
                 <p className="text-sm text-green-600 dark:text-green-300">
                   Your storyboard is complete with {scenes.length} scenes
+                  {musicDescription && " and background music"}
                 </p>
               </div>
             </div>

@@ -7,7 +7,12 @@ import {
   settingsDataSchema,
   breakdownDataSchema,
 } from "@video-venture/shared";
-import { videoProjects, eq, desc } from "@video-venture/shared/server";
+import {
+  videoProjects,
+  characters,
+  eq,
+  desc,
+} from "@video-venture/shared/server";
 import { TRPCError } from "@trpc/server";
 import { createProjectResponseSchema } from "@/lib/zod/create-video";
 import type { Storyboard } from "@video-venture/shared";
@@ -153,37 +158,112 @@ export const videoRouter = createTRPCRouter({
       return { success: true };
     }),
 
-  // Update project settings
-  updateSettings: protectedProcedure
+  // Replace updateSettings with updateSettingsAndGenerateBreakdown
+  updateSettingsAndGenerateBreakdown: protectedProcedure
     .input(
       z.object({
         projectId: z.string(),
         settings: settingsDataSchema,
       }),
     )
+    .output(
+      z.object({
+        success: z.boolean(),
+        breakdown: breakdownDataSchema,
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
-      const project = await ctx.db.query.videoProjects.findFirst({
-        where: eq(videoProjects.id, input.projectId),
-      });
+      try {
+        // First, get the project to ensure it exists and get storyboard
+        const project = await ctx.db.query.videoProjects.findFirst({
+          where: eq(videoProjects.id, input.projectId),
+        });
 
-      if (!project || project.userId !== ctx.session.userId) {
+        if (!project || project.userId !== ctx.session.userId) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Project not found",
+          });
+        }
+
+        if (!project.storyboard) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Project must have storyboard to generate breakdown",
+          });
+        }
+
+        // Update settings first
+        await ctx.db
+          .update(videoProjects)
+          .set({
+            settings: input.settings,
+            projectName: input.settings.projectName,
+            updatedAt: new Date(),
+          })
+          .where(eq(videoProjects.id, input.projectId));
+
+        // Get user's characters to include in the breakdown
+        const userCharacters = await ctx.db.query.characters.findMany({
+          where: eq(characters.userId, ctx.session.userId),
+        });
+
+        // Filter characters based on settings selection
+        const selectedCharacterIds = input.settings.characters ?? [];
+        const selectedCharacters = userCharacters.filter((char) =>
+          selectedCharacterIds.includes(char.id),
+        );
+
+        const token = await ctx.session.getToken();
+
+        // Call the breakdown API
+        const breakdownResponse = await fetch(
+          `${env.NEXT_PUBLIC_SERVER_API_URL}/storyboard/breakdown`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              storyboard: project.storyboard,
+              settings: input.settings,
+              characters:
+                selectedCharacters.length > 0 ? selectedCharacters : undefined,
+            }),
+          },
+        );
+
+        if (!breakdownResponse.ok) {
+          throw new Error(
+            `Breakdown API request failed: ${breakdownResponse.status} ${breakdownResponse.statusText}`,
+          );
+        }
+
+        const breakdown =
+          (await breakdownResponse.json()) as typeof breakdownDataSchema._type;
+
+        // Update the project with the breakdown and set status to breakdown
+        await ctx.db
+          .update(videoProjects)
+          .set({
+            breakdown,
+            status: "breakdown",
+            updatedAt: new Date(),
+          })
+          .where(eq(videoProjects.id, input.projectId));
+
+        return {
+          success: true,
+          breakdown,
+        };
+      } catch (error) {
         throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Project not found",
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to update settings and generate breakdown",
+          cause: error,
         });
       }
-
-      await ctx.db
-        .update(videoProjects)
-        .set({
-          settings: input.settings,
-          projectName: input.settings.projectName,
-          status: "breakdown",
-          updatedAt: new Date(),
-        })
-        .where(eq(videoProjects.id, input.projectId));
-
-      return { success: true };
     }),
 
   // Update project breakdown and start generation

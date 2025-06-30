@@ -177,14 +177,18 @@ export default function CreatePageContent() {
     },
   });
 
-  const updateSettingsMutation = api.video.updateSettings.useMutation({
-    onSuccess: () => {
-      setCurrentStep(3);
-    },
-    onError: (error) => {
-      toast.error(error.message || "Failed to save settings");
-    },
-  });
+  const updateSettingsAndGenerateBreakdownMutation =
+    api.video.updateSettingsAndGenerateBreakdown.useMutation({
+      onSuccess: (data) => {
+        // Set the breakdown data in the form
+        form.setValue("breakdown", data.breakdown);
+        setCurrentStep(3);
+        toast.success("Scene breakdown generated successfully!");
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to generate scene breakdown");
+      },
+    });
 
   const finalizeProjectMutation =
     api.video.updateBreakdownAndGenerate.useMutation({
@@ -224,7 +228,8 @@ export default function CreatePageContent() {
       if (isValid && projectId) {
         const settingsData = form.getValues("settings");
         if (settingsData) {
-          updateSettingsMutation.mutate({
+          // Use the new combined mutation that generates breakdown
+          updateSettingsAndGenerateBreakdownMutation.mutate({
             projectId,
             settings: settingsData,
           });
@@ -282,7 +287,7 @@ export default function CreatePageContent() {
   const isGenerating =
     createProjectMutation.isPending ||
     updateStoryboardMutation.isPending ||
-    updateSettingsMutation.isPending ||
+    updateSettingsAndGenerateBreakdownMutation.isPending ||
     finalizeProjectMutation.isPending;
 
   return (
