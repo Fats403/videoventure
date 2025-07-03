@@ -1,4 +1,4 @@
-import { FAL_VIDEO_MODELS } from "../config/fal-models";
+import { FAL_VIDEO_MODELS, FAL_MUSIC_MODELS } from "../config/fal-models";
 import { z } from "zod";
 
 // Enums schemas
@@ -35,6 +35,14 @@ export const videoModelSchema = z.enum(
   Object.keys(FAL_VIDEO_MODELS) as [
     keyof typeof FAL_VIDEO_MODELS,
     ...Array<keyof typeof FAL_VIDEO_MODELS>,
+  ]
+);
+
+// Create the music model schema dynamically from FAL_MUSIC_MODELS
+export const musicModelSchema = z.enum(
+  Object.keys(FAL_MUSIC_MODELS) as [
+    keyof typeof FAL_MUSIC_MODELS,
+    ...Array<keyof typeof FAL_MUSIC_MODELS>,
   ]
 );
 
@@ -214,6 +222,7 @@ export type VideoHistory = z.infer<typeof videoHistorySchema>;
 export type ProjectVisibility = z.infer<typeof projectVisibilitySchema>;
 export type ProjectStatus = z.infer<typeof projectStatusSchema>;
 export type VideoModel = z.infer<typeof videoModelSchema>;
+export type MusicModel = z.infer<typeof musicModelSchema>;
 export type AspectRatio = z.infer<typeof aspectRatioSchema>;
 export type VideoStyle = z.infer<typeof videoStyleSchema>;
 export type PlanType = z.infer<typeof planTypeSchema>;

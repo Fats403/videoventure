@@ -2,68 +2,48 @@ import { nanoid } from "nanoid";
 import { db } from "../db";
 import { characters, eq, and } from "@video-venture/shared/server";
 import type { CharacterCreationRequest } from "../schemas/character.schema";
-import { ImageProcessor } from "../modules/image-processor";
-import { ClientFactory } from "../utils/client-factory";
-import { createClient } from "@supabase/supabase-js";
+import { MediaService } from "./media.service";
+import { SupabaseStorageService } from "@video-venture/shared/server";
 
 export class CharacterService {
-  private imageProcessor: ImageProcessor;
-  private supabase: ReturnType<typeof createClient>;
-  private storageBucket: string;
+  private mediaService: MediaService;
+  private storage: SupabaseStorageService;
 
   constructor() {
-    this.imageProcessor = new ImageProcessor();
-    this.supabase = ClientFactory.getSupabase();
-    this.storageBucket = process.env.SUPABASE_STORAGE_BUCKET!;
+    this.mediaService = new MediaService();
+    this.storage = new SupabaseStorageService();
   }
 
   async generateCharacter(
     characterData: CharacterCreationRequest,
     userId: string
   ): Promise<{ character: any; imageUrl: string; characterId: string }> {
-    console.log("🎭 [CREATE] Starting character generation for user:", userId);
+    console.log(
+      "🎭 [CHARACTER-SERVICE] Starting character generation for user:",
+      userId
+    );
 
     try {
-      // 1. Generate and optimize image using the simplified module
-      const prompt = this.buildImagePrompt(characterData);
-      const optimizedImageBuffer =
-        await this.imageProcessor.generateImage(prompt);
-
       const characterId = nanoid();
 
-      // 2. Upload optimized image to Supabase Storage
-      const storageKey = `${userId}/characters/${characterId}.webp`;
-      console.log("📤 [CREATE] Uploading optimized image to:", storageKey);
+      // 1. Generate and optimize image (characters are always square for consistency)
+      const prompt = this.buildImagePrompt(characterData);
+      const optimizedImageBuffer = await this.mediaService.generateImage(
+        prompt,
+        "1:1"
+      );
 
-      try {
-        const uploadResult = await this.supabase.storage
-          .from(this.storageBucket)
-          .upload(storageKey, optimizedImageBuffer, {
-            contentType: "image/webp",
-            cacheControl: "31536000",
-            upsert: false,
-          });
+      // 2. Upload to storage using new path structure
+      const storageKey = this.storage.getCharacterImagePath(
+        userId,
+        characterId
+      );
+      const imageUrl = await this.mediaService.uploadImage(
+        optimizedImageBuffer,
+        storageKey
+      );
 
-        if (uploadResult.error) {
-          throw new Error(
-            `Supabase storage error: ${uploadResult.error.message}`
-          );
-        }
-        console.log("✅ [CREATE] Successfully uploaded optimized image");
-      } catch (uploadError) {
-        console.error("❌ [CREATE] Upload exception:", uploadError);
-        throw uploadError;
-      }
-
-      // 3. Get the public URL with cache-busting timestamp
-      const { data: publicUrlData } = this.supabase.storage
-        .from(this.storageBucket)
-        .getPublicUrl(storageKey);
-
-      const timestamp = Date.now();
-      const imageUrlWithCacheBust = `${publicUrlData.publicUrl}?t=${timestamp}`;
-
-      // 4. Save character to database
+      // 3. Save character to database
       const [savedCharacter] = await db
         .insert(characters)
         .values({
@@ -73,23 +53,26 @@ export class CharacterService {
           description: characterData.description,
           appearance: characterData.appearance,
           age: characterData.age,
-          imageUrl: imageUrlWithCacheBust,
+          imageUrl,
           storageKey,
         })
         .returning();
 
-      console.log("✅ [CREATE] Character created successfully");
+      console.log("✅ [CHARACTER-SERVICE] Character created successfully");
 
       return {
         character: savedCharacter,
-        imageUrl: imageUrlWithCacheBust,
+        imageUrl,
         characterId,
       };
     } catch (error) {
-      console.error("❌ [CREATE] Character generation failed:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
-      throw new Error(`Character generation failed: ${errorMessage}`);
+      console.error(
+        "❌ [CHARACTER-SERVICE] Character generation failed:",
+        error
+      );
+      throw new Error(
+        `Character generation failed: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
@@ -105,34 +88,20 @@ export class CharacterService {
         userId
       );
 
-      // 2. Generate and optimize new image using the simplified module
+      // 2. Generate new image (characters are always square for consistency)
       const prompt = this.buildImagePrompt(characterData);
-      const optimizedImageBuffer =
-        await this.imageProcessor.generateImage(prompt);
+      const optimizedImageBuffer = await this.mediaService.generateImage(
+        prompt,
+        "1:1"
+      );
 
-      // 3. Upload optimized image (reuse same storage key)
-      const { error: uploadError } = await this.supabase.storage
-        .from(this.storageBucket)
-        .upload(existingCharacter.storageKey, optimizedImageBuffer, {
-          contentType: "image/webp",
-          cacheControl: "31536000",
-          upsert: true, // Allow overwrite
-        });
+      // 3. Upload new image (reuse same storage key)
+      const imageUrl = await this.mediaService.uploadImage(
+        optimizedImageBuffer,
+        existingCharacter.storageKey
+      );
 
-      if (uploadError) {
-        console.error("❌ [UPDATE] Failed to upload new image:", uploadError);
-        throw new Error(`Failed to upload new image: ${uploadError.message}`);
-      }
-
-      // 4. Get public URL with cache-busting timestamp
-      const { data: publicUrlData } = this.supabase.storage
-        .from(this.storageBucket)
-        .getPublicUrl(existingCharacter.storageKey);
-
-      const timestamp = Date.now();
-      const imageUrlWithCacheBust = `${publicUrlData.publicUrl}?t=${timestamp}`;
-
-      // 5. Update character in database
+      // 4. Update character in database
       const [updatedCharacter] = await db
         .update(characters)
         .set({
@@ -140,7 +109,7 @@ export class CharacterService {
           description: characterData.description,
           appearance: characterData.appearance,
           age: characterData.age,
-          imageUrl: imageUrlWithCacheBust,
+          imageUrl,
           updatedAt: new Date(),
         })
         .where(
@@ -152,19 +121,40 @@ export class CharacterService {
         throw new Error("Failed to update character in database");
       }
 
-      console.log("✅ [UPDATE] Character updated successfully");
+      console.log("✅ [CHARACTER-SERVICE] Character updated successfully");
 
       return {
         character: updatedCharacter,
-        imageUrl: imageUrlWithCacheBust,
+        imageUrl,
       };
     } catch (error) {
-      console.error("❌ [UPDATE] Character update error:", error);
+      console.error("❌ [CHARACTER-SERVICE] Character update error:", error);
       throw new Error("Failed to update character");
     }
   }
 
-  async getCharacterById(characterId: string, userId: string) {
+  async deleteCharacter(characterId: string, userId: string): Promise<void> {
+    try {
+      const character = await this.getCharacterById(characterId, userId);
+
+      // Delete from storage
+      await this.storage.deleteFile(character.storageKey);
+
+      // Delete from database
+      await db
+        .delete(characters)
+        .where(
+          and(eq(characters.id, characterId), eq(characters.userId, userId))
+        );
+
+      console.log("✅ [CHARACTER-SERVICE] Character deleted successfully");
+    } catch (error) {
+      console.error("❌ [CHARACTER-SERVICE] Character deletion failed:", error);
+      throw new Error("Failed to delete character");
+    }
+  }
+
+  private async getCharacterById(characterId: string, userId: string) {
     const [character] = await db
       .select()
       .from(characters)
@@ -178,42 +168,11 @@ export class CharacterService {
     return character;
   }
 
-  async deleteCharacter(characterId: string, userId: string): Promise<void> {
-    try {
-      const character = await this.getCharacterById(characterId, userId);
-
-      // Delete from storage
-      const { error: deleteError } = await this.supabase.storage
-        .from(this.storageBucket)
-        .remove([character.storageKey]);
-
-      if (deleteError) {
-        console.error(
-          "❌ [DELETE] Failed to delete image from storage:",
-          deleteError
-        );
-        // Continue with database deletion even if storage deletion fails
-      }
-
-      // Delete from database
-      await db
-        .delete(characters)
-        .where(
-          and(eq(characters.id, characterId), eq(characters.userId, userId))
-        );
-
-      console.log("✅ [DELETE] Character deleted successfully");
-    } catch (error) {
-      console.error("❌ [DELETE] Character deletion failed:", error);
-      throw new Error("Failed to delete character");
-    }
-  }
-
   private buildImagePrompt(characterData: CharacterCreationRequest): string {
     let prompt = "";
 
     if (characterData.age) {
-      prompt += `The age of the character age is: ${characterData.age}. `;
+      prompt += `The age of the character is: ${characterData.age}. `;
     }
 
     prompt += `The description of the character is: ${characterData.description}. `;

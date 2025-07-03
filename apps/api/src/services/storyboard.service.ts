@@ -17,15 +17,15 @@ import {
   SceneBreakdownLLMResponse,
 } from "../schemas/storyboard.schema";
 import { nanoid } from "nanoid";
-import type { Character, Scene } from "@video-venture/shared";
+import type { Character, Scene, AspectRatio } from "@video-venture/shared";
 import { getFalModel } from "@video-venture/shared";
-import { ImageProcessor } from "../modules/image-processor";
+import { MediaService } from "./media.service";
 
 export class StoryboardService {
   private genAI: GoogleGenerativeAI;
   private modelName: string = "gemini-2.0-flash";
   private maxAttempts = 3;
-  private imageProcessor: ImageProcessor;
+  private mediaService: MediaService;
 
   constructor(apiKey?: string) {
     const key = apiKey ?? process.env.GEMINI_API_KEY;
@@ -33,7 +33,7 @@ export class StoryboardService {
       throw new Error("GEMINI_API_KEY not set.");
     }
     this.genAI = new GoogleGenerativeAI(key);
-    this.imageProcessor = new ImageProcessor();
+    this.mediaService = new MediaService();
   }
 
   private buildSystemPrompt(variantCount: number = 2, format: string): Content {
@@ -125,30 +125,10 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
       responseMimeType: "application/json",
     };
 
-    const safetySettings: SafetySetting[] = [
-      {
-        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-    ];
-
     const model = this.genAI.getGenerativeModel({
       model: this.modelName,
       systemInstruction: systemInstruction,
       generationConfig,
-      safetySettings,
     });
 
     let attempts = 0;
@@ -333,7 +313,8 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
           const sceneImageUrl = await this.generateSceneImage(
             scene.imageDescription,
             breakdownData.characters ?? [],
-            index
+            index,
+            breakdownData.settings.aspectRatio
           );
 
           return {
@@ -378,16 +359,18 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
   }
 
   /**
-   * Generate scene image using the new single-prompt approach with character references
+   * Generate scene image using MediaService directly
    */
   private async generateSceneImage(
     imageDescription: string,
     characters: Character[],
-    sceneIndex: number
+    sceneIndex: number,
+    aspectRatio: AspectRatio
   ): Promise<string> {
     console.log(
       `🎨 Generating scene image ${sceneIndex + 1}: ${imageDescription}`
     );
+    console.log(`📐 Using aspect ratio: ${aspectRatio}`);
 
     try {
       // Get characters mentioned in this scene
@@ -406,21 +389,19 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
         mentionedCharacters
       );
 
-      // Generate scene with character references using the new approach
+      // Generate scene with character references using MediaService directly
       const sceneImageBuffer =
-        await this.imageProcessor.generateSceneWithCharacters(
+        await this.mediaService.generateSceneWithCharacters(
           scenePrompt,
-          mentionedCharacters
+          mentionedCharacters,
+          aspectRatio
         );
 
-      // Upload to storage
+      // Upload to storage using MediaService
       const timestamp = Date.now();
       const storageKey = `scenes/scene-${sceneIndex + 1}-${timestamp}.webp`;
 
-      return await this.imageProcessor.uploadImageToStorage(
-        sceneImageBuffer,
-        storageKey
-      );
+      return await this.mediaService.uploadImage(sceneImageBuffer, storageKey);
     } catch (error) {
       console.error(
         `❌ Scene image generation failed for scene ${sceneIndex + 1}:`,
@@ -643,30 +624,10 @@ OUTPUT FORMAT (JSON only, no other text):
       responseMimeType: "application/json",
     };
 
-    const safetySettings: SafetySetting[] = [
-      {
-        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-      },
-    ];
-
     const model = this.genAI.getGenerativeModel({
       model: this.modelName,
       systemInstruction: systemInstruction,
       generationConfig,
-      safetySettings,
     });
 
     let attempts = 0;

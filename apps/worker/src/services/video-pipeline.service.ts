@@ -1,35 +1,34 @@
 import * as fs from "fs";
 import * as path from "path";
 import { db } from "../db";
-import { VideoGenerationService } from "./video-generation.service";
+import { FalService } from "./fal.service";
 import { AudioService } from "./audio.service";
-import { MusicService } from "./music.service";
 import {
   VideoProcessingService,
   SceneWithAudio,
 } from "./video-processing.service";
-import { S3Service, videoProjects, eq } from "@video-venture/shared/server";
+import {
+  SupabaseStorageService,
+  videoProjects,
+  eq,
+} from "@video-venture/shared/server";
 import type { ProjectStatus, VideoHistory } from "@video-venture/shared";
 import { SubtitleService } from "./subtitle.service";
 
 export class VideoPipelineService {
-  private videoGenerationService: VideoGenerationService;
+  private falService: FalService;
   private audioService: AudioService;
-  private musicService: MusicService;
   private videoProcessingService: VideoProcessingService;
-  private s3Service: S3Service;
+  private storageService: SupabaseStorageService;
   private subtitleService: SubtitleService;
-  private s3BucketName: string;
   private tempDir: string;
 
   constructor() {
-    this.videoGenerationService = new VideoGenerationService();
+    this.falService = new FalService();
     this.audioService = new AudioService();
-    this.musicService = new MusicService();
     this.videoProcessingService = new VideoProcessingService();
-    this.s3Service = new S3Service();
+    this.storageService = new SupabaseStorageService();
     this.subtitleService = new SubtitleService();
-    this.s3BucketName = process.env.S3_BUCKET_NAME || "";
     this.tempDir = path.join(process.cwd(), "temp");
 
     if (!fs.existsSync(this.tempDir)) {
@@ -78,35 +77,53 @@ export class VideoPipelineService {
       // Step 1: Start processing
       await this.updateProjectStatus(videoId, jobId, "generating", 5);
 
-      // Step 2: Generate videos for each scene
+      // Step 2: Submit all video generation jobs
+      console.log(`🚀 Starting video generation for ${scenes.length} scenes`);
       const videoJobs = await Promise.all(
         scenes.map((scene) =>
-          this.videoGenerationService.generateSceneVideo(
-            scene,
-            settings,
-            jobId,
-            this.s3BucketName
-          )
+          this.falService.generateSceneVideo(scene, settings, jobId, userId)
         )
       );
 
-      // Step 3: Poll for completion
-      const completedVideoJobs =
-        await this.videoGenerationService.pollVideoJobs(
-          videoJobs,
-          async (progress) => {
-            await this.updateProjectStatus(
-              videoId,
-              jobId,
-              "generating",
-              5 + Math.round(progress * 20)
-            );
-          }
-        );
+      // Step 3: Poll for video completion with progress callback
+      const completedVideoJobs = await this.falService.pollVideoJobs(
+        videoJobs,
+        async (progress) => {
+          await this.updateProjectStatus(
+            videoId,
+            jobId,
+            "generating",
+            5 + Math.round(progress * 20) // 5-25%
+          );
+        }
+      );
 
       await this.updateProjectStatus(videoId, jobId, "generating", 25);
 
-      // Step 4: Generate audio
+      // Step 4: Generate music (only after videos are complete)
+      const totalDuration = scenes.length * 5; // Estimate based on scene count
+      console.log(`🎵 Starting music generation for ${totalDuration}s`);
+      const musicJob = await this.falService.generateMusic(
+        breakdown.musicDescription || "Upbeat background music",
+        totalDuration,
+        jobId,
+        userId,
+        videoId
+      );
+
+      // Step 5: Poll for music completion with progress callback
+      await this.falService.pollMusicJob(musicJob, async (progress) => {
+        await this.updateProjectStatus(
+          videoId,
+          jobId,
+          "generating",
+          25 + Math.round(progress * 15) // 25-40%
+        );
+      });
+
+      await this.updateProjectStatus(videoId, jobId, "generating", 40);
+
+      // Step 6: Generate audio for each scene
       const audioResults = await Promise.all(
         scenes.map((scene) =>
           this.audioService.generateVoiceOverWithTimestamps(
@@ -118,9 +135,9 @@ export class VideoPipelineService {
         )
       );
 
-      await this.updateProjectStatus(videoId, jobId, "generating", 40);
+      await this.updateProjectStatus(videoId, jobId, "generating", 50);
 
-      // Step 5: Process scenes with audio
+      // Step 7: Download videos and process scenes with audio
       const scenesWithAudio: SceneWithAudio[] = [];
 
       for (let i = 0; i < completedVideoJobs.length; i++) {
@@ -133,10 +150,10 @@ export class VideoPipelineService {
           fs.mkdirSync(sceneDir, { recursive: true });
         }
 
+        // Download video from Supabase
         const videoPath = path.join(sceneDir, `video.mp4`);
-        await this.videoProcessingService.downloadVideoFromS3(
-          this.s3BucketName,
-          job.s3Key,
+        await this.videoProcessingService.downloadVideoFromStorage(
+          job.storageKey,
           videoPath
         );
 
@@ -144,22 +161,12 @@ export class VideoPipelineService {
         const audioDuration =
           await this.audioService.getAudioDuration(audioPath);
 
-        const scenePaths = this.s3Service.getScenePaths(
-          userId,
-          videoId,
-          sceneNumber,
-          1
-        );
-
-        await this.s3Service.uploadFile(
+        // Upload audio to Supabase
+        const audioStorageKey = `users/${userId}/projects/${videoId}/scenes/scene-${sceneNumber}/audio.wav`;
+        await this.videoProcessingService.uploadFileToStorage(
           audioPath,
-          this.s3BucketName,
-          scenePaths.audio
-        );
-        await this.s3Service.uploadFile(
-          videoPath,
-          this.s3BucketName,
-          scenePaths.video
+          audioStorageKey,
+          "audio/wav"
         );
 
         scenesWithAudio.push({
@@ -167,13 +174,13 @@ export class VideoPipelineService {
           videoPath,
           audioPath,
           duration: audioDuration,
-          s3Key: scenePaths.video,
+          storageKey: job.storageKey,
         });
       }
 
       await this.updateProjectStatus(videoId, jobId, "generating", 60);
 
-      // Step 6: Combine audio with videos and add subtitles
+      // Step 8: Combine audio with videos and add subtitles
       const combinedScenePaths: string[] = [];
 
       for (let i = 0; i < scenesWithAudio.length; i++) {
@@ -211,7 +218,7 @@ export class VideoPipelineService {
         combinedScenePaths.push(withSubtitlesPath);
       }
 
-      // Step 7: Combine all scenes
+      // Step 9: Combine all scenes
       const finalVideoPath = path.join(jobTempDir, "final_video.mp4");
       await this.videoProcessingService.combineVideos(
         combinedScenePaths,
@@ -220,28 +227,11 @@ export class VideoPipelineService {
 
       await this.updateProjectStatus(videoId, jobId, "generating", 75);
 
-      // Step 8: Generate background music
-      const totalDuration = scenesWithAudio.reduce(
-        (sum, scene) => sum + scene.duration,
-        0
-      );
-      const musicPath = await this.musicService.getBackgroundMusic(
-        breakdown.musicDescription || "Upbeat background music",
-        jobId,
-        this.tempDir,
-        totalDuration
-      );
+      // Step 10: Download music from Supabase
+      const musicPath = path.join(jobTempDir, "background_music.wav");
+      await this.storageService.downloadFile(musicJob.storageKey, musicPath);
 
-      const videoPaths = this.s3Service.getVideoPaths(userId, videoId, 1);
-      await this.s3Service.uploadFile(
-        musicPath,
-        this.s3BucketName,
-        videoPaths.music
-      );
-
-      await this.updateProjectStatus(videoId, jobId, "generating", 85);
-
-      // Step 9: Add music to final video
+      // Step 11: Add music to final video
       const finalVideoWithMusicPath = path.join(
         jobTempDir,
         "final_video_with_music.mp4"
@@ -252,16 +242,17 @@ export class VideoPipelineService {
         finalVideoWithMusicPath
       );
 
-      await this.updateProjectStatus(videoId, jobId, "generating", 90);
+      await this.updateProjectStatus(videoId, jobId, "generating", 85);
 
-      // Step 10: Upload final video
-      await this.s3Service.uploadFile(
+      // Step 12: Upload final video to Supabase
+      const videoStorageKey = `users/${userId}/projects/${videoId}/video/final_v1.mp4`;
+      await this.videoProcessingService.uploadFileToStorage(
         finalVideoWithMusicPath,
-        this.s3BucketName,
-        videoPaths.video
+        videoStorageKey,
+        "video/mp4"
       );
 
-      // Step 11: Generate thumbnail
+      // Step 13: Generate and upload thumbnail
       const thumbnailPath = path.join(jobTempDir, "thumbnail.jpg");
       await this.videoProcessingService.generateThumbnail(
         finalVideoWithMusicPath,
@@ -270,18 +261,20 @@ export class VideoPipelineService {
         settings.aspectRatio
       );
 
-      await this.s3Service.uploadFile(
-        thumbnailPath,
-        this.s3BucketName,
-        videoPaths.thumbnail
-      );
+      const thumbnailStorageKey = `users/${userId}/projects/${videoId}/thumbnail.jpg`;
+      const thumbnailUrl =
+        await this.videoProcessingService.uploadFileToStorage(
+          thumbnailPath,
+          thumbnailStorageKey,
+          "image/jpeg"
+        );
 
-      // Step 12: Complete the project
+      // Step 14: Complete the project
       await this.completeProject(
         videoId,
         jobId,
-        totalDuration,
-        videoPaths.thumbnail
+        scenesWithAudio.reduce((sum, scene) => sum + scene.duration, 0),
+        thumbnailUrl
       );
 
       console.log(`✅ Video project ${videoId} completed successfully`);

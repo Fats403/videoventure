@@ -10,6 +10,15 @@ export interface FalVideoModel {
   defaultConfig: Record<string, any>;
 }
 
+export interface FalMusicModel {
+  id: string;
+  name: string;
+  description: string;
+  supportedDurations: number[];
+  costPerSecond: number;
+  defaultConfig: Record<string, any>;
+}
+
 export const FAL_VIDEO_MODELS: Record<string, FalVideoModel> = {
   "kling-2.1-standard": {
     id: "fal-ai/kling-video/v2.1/standard/image-to-video",
@@ -66,18 +75,49 @@ export const FAL_VIDEO_MODELS: Record<string, FalVideoModel> = {
       generate_audio: false,
     },
   },
-} as const;
+};
+
+export const FAL_MUSIC_MODELS: Record<string, FalMusicModel> = {
+  "cassette-ai": {
+    id: "CassetteAI/music-generator",
+    name: "CassetteAI Music Generator",
+    description:
+      "High-quality AI music generation with customizable styles and moods",
+    supportedDurations: [30, 60, 120, 180],
+    costPerSecond: 0.02,
+    defaultConfig: {},
+  },
+  // Add more music models as they become available
+};
 
 type VideoModel = keyof typeof FAL_VIDEO_MODELS;
+type MusicModel = keyof typeof FAL_MUSIC_MODELS;
 
-export function getFalModel(modelId: VideoModel): FalVideoModel {
+export function getFalVideoModel(modelId: VideoModel): FalVideoModel {
   const model = FAL_VIDEO_MODELS[modelId];
   if (!model) {
-    throw new Error(`Fal model '${modelId}' not found`);
+    throw new Error(`Fal video model '${modelId}' not found`);
   }
   return model;
 }
 
-export function getAvailableModels(): FalVideoModel[] {
+export function getFalMusicModel(modelId: MusicModel): FalMusicModel {
+  const model = FAL_MUSIC_MODELS[modelId];
+  if (!model) {
+    throw new Error(`Fal music model '${modelId}' not found`);
+  }
+  return model;
+}
+
+// Keep the old function for backward compatibility
+export function getFalModel(modelId: VideoModel): FalVideoModel {
+  return getFalVideoModel(modelId);
+}
+
+export function getAvailableVideoModels(): FalVideoModel[] {
   return Object.values(FAL_VIDEO_MODELS);
+}
+
+export function getAvailableMusicModels(): FalMusicModel[] {
+  return Object.values(FAL_MUSIC_MODELS);
 }

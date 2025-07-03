@@ -42,11 +42,24 @@ export const StoryboardCreationResponseSchema = z.array(
   StoryboardResponseSchema
 );
 
+// Character schema for API requests (dates as strings that get converted)
+const CharacterApiSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  appearance: z.string().nullable(),
+  age: z.string().nullable(),
+  imageUrl: z.string().url().optional(),
+  storageKey: z.string().optional(),
+  createdAt: z.string().transform((str) => new Date(str)),
+  updatedAt: z.string().transform((str) => new Date(str)),
+});
+
 // Scene breakdown request schema
 export const SceneBreakdownRequestSchema = z.object({
   storyboard: storyboardDataSchema,
   settings: settingsDataSchema,
-  characters: z.array(characterSchema).optional(),
+  characters: z.array(CharacterApiSchema).optional(),
 });
 
 // Updated Scene breakdown LLM response schema to include music description

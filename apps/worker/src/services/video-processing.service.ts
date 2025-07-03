@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import ffmpeg from "fluent-ffmpeg";
-import { S3Service } from "@video-venture/shared/server";
+import { SupabaseStorageService } from "@video-venture/shared/server";
 import { blendVideos, type TransitionType } from "ffmpeg-transitions";
 
 export interface SceneWithAudio {
@@ -9,14 +9,14 @@ export interface SceneWithAudio {
   videoPath: string;
   audioPath: string;
   duration: number;
-  s3Key: string;
+  storageKey: string;
 }
 
 export class VideoProcessingService {
-  private s3Service: S3Service;
+  private storageService: SupabaseStorageService;
 
   constructor() {
-    this.s3Service = new S3Service();
+    this.storageService = new SupabaseStorageService();
   }
 
   /**
@@ -198,68 +198,101 @@ export class VideoProcessingService {
   }
 
   /**
-   * Download a video file from S3
-   * @param s3BucketName - S3 bucket name
-   * @param s3Key - S3 object key prefix
+   * Download video from Supabase storage
+   * @param storageKey - Supabase storage key
    * @param outputPath - Path to save downloaded video
    * @returns Path to downloaded video
    */
-  async downloadVideoFromS3(
-    s3BucketName: string,
-    s3Key: string,
+  async downloadVideoFromStorage(
+    storageKey: string,
     outputPath: string
   ): Promise<string> {
     try {
-      // Find the MP4 file in the S3 prefix
-      const mp4File = await this.s3Service.findFileWithExtension(
-        s3BucketName,
-        s3Key,
-        ".mp4"
-      );
-
-      if (!mp4File) {
-        throw new Error(`No MP4 file found in S3 at ${s3BucketName}/${s3Key}`);
-      }
-
-      // Download the file
-      return await this.s3Service.downloadFile(
-        s3BucketName,
-        mp4File,
-        outputPath
-      );
+      await this.storageService.downloadFile(storageKey, outputPath);
+      console.log(`✅ Downloaded video from Supabase: ${storageKey}`);
+      return outputPath;
     } catch (error: any) {
-      console.error(`Error downloading video from S3: ${error.message}`);
+      console.error(`❌ Error downloading video from Supabase:`, error.message);
       throw error;
     }
   }
 
+  /**
+   * Upload file to Supabase storage
+   * @param filePath - Local file path
+   * @param storageKey - Supabase storage key
+   * @param contentType - MIME type of the file
+   * @returns Public URL of uploaded file
+   */
+  async uploadFileToStorage(
+    filePath: string,
+    storageKey: string,
+    contentType: string
+  ): Promise<string> {
+    try {
+      const buffer = fs.readFileSync(filePath);
+      const url = await this.storageService.uploadBuffer(
+        buffer,
+        storageKey,
+        contentType
+      );
+
+      // Clean up local file
+      fs.unlinkSync(filePath);
+
+      console.log(`✅ Uploaded file to Supabase: ${storageKey}`);
+      return url;
+    } catch (error: any) {
+      console.error(`❌ Error uploading file to Supabase:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate thumbnail from video
+   * @param videoPath - Path to video file
+   * @param outputPath - Path to save thumbnail
+   * @param timeInSeconds - Time in video to capture thumbnail
+   * @param aspectRatio - Aspect ratio for thumbnail size
+   * @returns Path to generated thumbnail
+   */
   async generateThumbnail(
     videoPath: string,
     outputPath: string,
-    timeInSeconds = 1,
-    aspectRatio: "16:9" | "9:16" | "1:1" = "16:9"
+    timeInSeconds: number = 1,
+    aspectRatio: "16:9" | "1:1" | "9:16" = "16:9"
   ): Promise<string> {
-    const sizes = {
-      "16:9": "1280x720",
-      "9:16": "720x1280",
-      "1:1": "1280x1280",
-    };
     return new Promise((resolve, reject) => {
       ffmpeg(videoPath)
-        .screenshots({
-          timestamps: [timeInSeconds],
-          filename: path.basename(outputPath),
-          folder: path.dirname(outputPath),
-          size: sizes[aspectRatio],
+        .seekInput(timeInSeconds)
+        .frames(1)
+        .size(this.getThumbnailSize(aspectRatio))
+        .output(outputPath)
+        .on("error", (err) => {
+          console.error(`Error generating thumbnail: ${err.message}`);
+          reject(err);
         })
         .on("end", () => {
-          console.log("✅ Thumbnail generated successfully");
+          console.log(`✅ Generated thumbnail: ${outputPath}`);
           resolve(outputPath);
         })
-        .on("error", (err) => {
-          console.error("❌ Error generating thumbnail:", err);
-          reject(err);
-        });
+        .run();
     });
+  }
+
+  /**
+   * Get thumbnail size based on aspect ratio
+   */
+  private getThumbnailSize(aspectRatio: "16:9" | "1:1" | "9:16"): string {
+    switch (aspectRatio) {
+      case "16:9":
+        return "1280x720";
+      case "1:1":
+        return "720x720";
+      case "9:16":
+        return "720x1280";
+      default:
+        return "1280x720";
+    }
   }
 }
