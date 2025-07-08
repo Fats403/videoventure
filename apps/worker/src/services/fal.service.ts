@@ -57,6 +57,7 @@ export class FalService {
   async generateSceneVideo(
     scene: Scene,
     settings: SettingsData,
+    projectId: string,
     jobId: string,
     userId: string
   ): Promise<VideoGenerationJob> {
@@ -77,7 +78,11 @@ export class FalService {
       };
 
       // Generate storage path
-      const storageKey = `users/${userId}/jobs/${jobId}/scenes/scene-${scene.order + 1}/video.mp4`;
+      const storageKey = this.storageService.getSceneVideoPath(
+        userId,
+        projectId,
+        scene.order + 1
+      );
 
       console.log(`📤 Submitting to Fal.ai:`, {
         model: falModel.id,
@@ -138,7 +143,7 @@ export class FalService {
         ...falModel.defaultConfig,
       };
 
-      const storageKey = `users/${userId}/projects/${projectId}/audio/music.wav`;
+      const storageKey = this.storageService.getMusicPath(userId, projectId);
 
       console.log(`📤 Submitting music to Fal.ai:`, {
         model: falModel.id,

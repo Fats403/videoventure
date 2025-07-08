@@ -81,7 +81,13 @@ export class VideoPipelineService {
       console.log(`🚀 Starting video generation for ${scenes.length} scenes`);
       const videoJobs = await Promise.all(
         scenes.map((scene) =>
-          this.falService.generateSceneVideo(scene, settings, jobId, userId)
+          this.falService.generateSceneVideo(
+            scene,
+            settings,
+            project.id,
+            jobId,
+            userId
+          )
         )
       );
 
@@ -100,30 +106,7 @@ export class VideoPipelineService {
 
       await this.updateProjectStatus(videoId, jobId, "generating", 25);
 
-      // Step 4: Generate music (only after videos are complete)
-      const totalDuration = scenes.length * 5; // Estimate based on scene count
-      console.log(`🎵 Starting music generation for ${totalDuration}s`);
-      const musicJob = await this.falService.generateMusic(
-        breakdown.musicDescription || "Upbeat background music",
-        totalDuration,
-        jobId,
-        userId,
-        videoId
-      );
-
-      // Step 5: Poll for music completion with progress callback
-      await this.falService.pollMusicJob(musicJob, async (progress) => {
-        await this.updateProjectStatus(
-          videoId,
-          jobId,
-          "generating",
-          25 + Math.round(progress * 15) // 25-40%
-        );
-      });
-
-      await this.updateProjectStatus(videoId, jobId, "generating", 40);
-
-      // Step 6: Generate audio for each scene
+      // Step 4: Generate audio for each scene
       const audioResults = await Promise.all(
         scenes.map((scene) =>
           this.audioService.generateVoiceOverWithTimestamps(
@@ -135,9 +118,9 @@ export class VideoPipelineService {
         )
       );
 
-      await this.updateProjectStatus(videoId, jobId, "generating", 50);
+      await this.updateProjectStatus(videoId, jobId, "generating", 40);
 
-      // Step 7: Download videos and process scenes with audio
+      // Step 5: Download videos from Supabase and keep them in memory for processing
       const scenesWithAudio: SceneWithAudio[] = [];
 
       for (let i = 0; i < completedVideoJobs.length; i++) {
@@ -150,7 +133,7 @@ export class VideoPipelineService {
           fs.mkdirSync(sceneDir, { recursive: true });
         }
 
-        // Download video from Supabase
+        // Download video from Supabase to local temp directory
         const videoPath = path.join(sceneDir, `video.mp4`);
         await this.videoProcessingService.downloadVideoFromStorage(
           job.storageKey,
@@ -161,26 +144,30 @@ export class VideoPipelineService {
         const audioDuration =
           await this.audioService.getAudioDuration(audioPath);
 
-        // Upload audio to Supabase
-        const audioStorageKey = `users/${userId}/projects/${videoId}/scenes/scene-${sceneNumber}/audio.wav`;
+        // Upload audio to Supabase for archival purposes
+        const voiceOverStorageKey = this.storageService.getSceneVoiceOverPath(
+          userId,
+          videoId,
+          sceneNumber
+        );
         await this.videoProcessingService.uploadFileToStorage(
           audioPath,
-          audioStorageKey,
+          voiceOverStorageKey,
           "audio/wav"
         );
 
         scenesWithAudio.push({
           sceneNumber,
-          videoPath,
-          audioPath,
+          videoPath, // Keep local path for processing
+          audioPath, // Keep local path for processing
           duration: audioDuration,
           storageKey: job.storageKey,
         });
       }
 
-      await this.updateProjectStatus(videoId, jobId, "generating", 60);
+      await this.updateProjectStatus(videoId, jobId, "generating", 55);
 
-      // Step 8: Combine audio with videos and add subtitles
+      // Step 6: Combine audio with videos and add subtitles
       const combinedScenePaths: string[] = [];
 
       for (let i = 0; i < scenesWithAudio.length; i++) {
@@ -218,20 +205,47 @@ export class VideoPipelineService {
         combinedScenePaths.push(withSubtitlesPath);
       }
 
-      // Step 9: Combine all scenes
+      // Step 7: Combine all scenes
       const finalVideoPath = path.join(jobTempDir, "final_video.mp4");
       await this.videoProcessingService.combineVideos(
         combinedScenePaths,
         finalVideoPath
       );
 
-      await this.updateProjectStatus(videoId, jobId, "generating", 75);
+      await this.updateProjectStatus(videoId, jobId, "generating", 70);
 
-      // Step 10: Download music from Supabase
+      // Step 8: Get the actual duration of the final video
+      const actualDuration =
+        await this.videoProcessingService.getVideoDuration(finalVideoPath);
+      console.log(`📏 Final video duration: ${actualDuration.toFixed(2)}s`);
+
+      // Step 9: Generate music with the exact duration needed
+      console.log(`🎵 Starting music generation for ${actualDuration}s`);
+      const musicJob = await this.falService.generateMusic(
+        breakdown.musicDescription || "Upbeat background music",
+        Math.ceil(actualDuration), // Round up to ensure we have enough music
+        jobId,
+        userId,
+        videoId
+      );
+
+      // Step 10: Poll for music completion with progress callback
+      await this.falService.pollMusicJob(musicJob, async (progress) => {
+        await this.updateProjectStatus(
+          videoId,
+          jobId,
+          "generating",
+          70 + Math.round(progress * 15) // 70-85%
+        );
+      });
+
+      await this.updateProjectStatus(videoId, jobId, "generating", 85);
+
+      // Step 11: Download music from Supabase
       const musicPath = path.join(jobTempDir, "background_music.wav");
       await this.storageService.downloadFile(musicJob.storageKey, musicPath);
 
-      // Step 11: Add music to final video
+      // Step 12: Add music to final video
       const finalVideoWithMusicPath = path.join(
         jobTempDir,
         "final_video_with_music.mp4"
@@ -242,17 +256,21 @@ export class VideoPipelineService {
         finalVideoWithMusicPath
       );
 
-      await this.updateProjectStatus(videoId, jobId, "generating", 85);
+      await this.updateProjectStatus(videoId, jobId, "generating", 90);
 
-      // Step 12: Upload final video to Supabase
-      const videoStorageKey = `users/${userId}/projects/${videoId}/video/final_v1.mp4`;
+      // Step 13: Upload final video to Supabase
+      const videoStorageKey = this.storageService.getFinalVideoPath(
+        userId,
+        videoId
+      );
+
       await this.videoProcessingService.uploadFileToStorage(
         finalVideoWithMusicPath,
         videoStorageKey,
         "video/mp4"
       );
 
-      // Step 13: Generate and upload thumbnail
+      // Step 14: Generate and upload thumbnail
       const thumbnailPath = path.join(jobTempDir, "thumbnail.jpg");
       await this.videoProcessingService.generateThumbnail(
         finalVideoWithMusicPath,
@@ -261,7 +279,11 @@ export class VideoPipelineService {
         settings.aspectRatio
       );
 
-      const thumbnailStorageKey = `users/${userId}/projects/${videoId}/thumbnail.jpg`;
+      const thumbnailStorageKey = this.storageService.getThumbnailPath(
+        userId,
+        videoId
+      );
+
       const thumbnailUrl =
         await this.videoProcessingService.uploadFileToStorage(
           thumbnailPath,
@@ -269,11 +291,11 @@ export class VideoPipelineService {
           "image/jpeg"
         );
 
-      // Step 14: Complete the project
+      // Step 15: Complete the project
       await this.completeProject(
         videoId,
         jobId,
-        scenesWithAudio.reduce((sum, scene) => sum + scene.duration, 0),
+        actualDuration, // Use the actual duration
         thumbnailUrl
       );
 

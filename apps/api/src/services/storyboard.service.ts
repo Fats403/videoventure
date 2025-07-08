@@ -1,9 +1,6 @@
 import {
   GoogleGenerativeAI,
-  HarmCategory,
-  HarmBlockThreshold,
   GenerationConfig,
-  SafetySetting,
   Content,
 } from "@google/generative-ai";
 import {
@@ -17,8 +14,12 @@ import {
   SceneBreakdownLLMResponse,
 } from "../schemas/storyboard.schema";
 import { nanoid } from "nanoid";
-import type { Character, Scene, AspectRatio } from "@video-venture/shared";
-import { getFalModel } from "@video-venture/shared";
+import {
+  type Character,
+  type Scene,
+  type AspectRatio,
+  getFalVideoModel,
+} from "@video-venture/shared";
 import { MediaService } from "./media.service";
 
 export class StoryboardService {
@@ -293,7 +294,9 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
    * Generate scene breakdown from storyboard and settings with actual image generation
    */
   async generateSceneBreakdown(
-    breakdownData: SceneBreakdownRequest
+    breakdownData: SceneBreakdownRequest,
+    userId: string,
+    projectId: string
   ): Promise<SceneBreakdownResponse> {
     console.log(`🎬 Generating scene breakdown from storyboard`);
 
@@ -314,7 +317,9 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
             scene.imageDescription,
             breakdownData.characters ?? [],
             index,
-            breakdownData.settings.aspectRatio
+            breakdownData.settings.aspectRatio,
+            userId,
+            projectId
           );
 
           return {
@@ -365,7 +370,9 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
     imageDescription: string,
     characters: Character[],
     sceneIndex: number,
-    aspectRatio: AspectRatio
+    aspectRatio: AspectRatio,
+    userId: string,
+    projectId: string
   ): Promise<string> {
     console.log(
       `🎨 Generating scene image ${sceneIndex + 1}: ${imageDescription}`
@@ -397,9 +404,7 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
           aspectRatio
         );
 
-      // Upload to storage using MediaService
-      const timestamp = Date.now();
-      const storageKey = `scenes/scene-${sceneIndex + 1}-${timestamp}.webp`;
+      const storageKey = `users/${userId}/projects/${projectId}/scenes/scene-${sceneIndex + 1}/image.webp`;
 
       return await this.mediaService.uploadImage(sceneImageBuffer, storageKey);
     } catch (error) {
@@ -458,7 +463,7 @@ Write commercial storyboards as descriptive paragraphs that explain the advertis
   private buildSceneBreakdownSystemPrompt(
     data: SceneBreakdownRequest
   ): Content {
-    const videoModel = getFalModel(data.settings.videoModel);
+    const videoModel = getFalVideoModel(data.settings.videoModel);
     const maxDuration = Math.max(...videoModel.supportedDurations);
     const minDuration = Math.min(...videoModel.supportedDurations);
 
@@ -501,11 +506,10 @@ REQUIREMENTS FOR EACH SCENE:
 
 MUSIC DESCRIPTION REQUIREMENTS:
 Create a comprehensive music description that:
-- Complements the overall narrative and emotional arc
+- Max 150 characters
+- Something that complements the overall narrative and emotional arc
 - Matches the tone and style of the storyboard
-- Considers the cinematic inspiration if provided
-- Supports the pacing and flow of all scenes
-- Includes specific musical elements (instruments, tempo, mood)
+- Should include specific musical elements (instruments, tempo, mood, bpm, etc.)
 
 GUIDELINES:
 - Create 4-8 scenes total (aim for balanced pacing)

@@ -19,7 +19,15 @@ export class StoryboardController {
     return await this.storyboardService.generateAdditionalVariant(data);
   }
 
-  async generateSceneBreakdown(data: SceneBreakdownRequest) {
-    return await this.storyboardService.generateSceneBreakdown(data);
+  async generateSceneBreakdown(
+    data: SceneBreakdownRequest,
+    userId: string,
+    projectId: string
+  ) {
+    return await this.storyboardService.generateSceneBreakdown(
+      data,
+      userId,
+      projectId
+    );
   }
 }

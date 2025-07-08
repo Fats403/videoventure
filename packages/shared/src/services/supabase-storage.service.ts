@@ -142,9 +142,31 @@ export class SupabaseStorageService {
   getSceneImagePath(
     userId: string,
     projectId: string,
-    sceneId: string
+    sceneIndex: number
   ): string {
-    return `users/${userId}/projects/${projectId}/scenes/${sceneId}/image.webp`;
+    return `users/${userId}/projects/${projectId}/scenes/scene-${sceneIndex}/image.webp`;
+  }
+
+  /**
+   * Generate storage paths for scene videos
+   */
+  getSceneVideoPath(
+    userId: string,
+    projectId: string,
+    sceneIndex: number
+  ): string {
+    return `users/${userId}/projects/${projectId}/scenes/scene-${sceneIndex}/video.mp4`;
+  }
+
+  /**
+   * Generate storage paths for scene voice over
+   */
+  getSceneVoiceOverPath(
+    userId: string,
+    projectId: string,
+    sceneIndex: number
+  ): string {
+    return `users/${userId}/projects/${projectId}/scenes/scene-${sceneIndex}/voice-over.wav`;
   }
 
   /**
@@ -155,9 +177,23 @@ export class SupabaseStorageService {
   }
 
   /**
+   * Generate storage paths for music
+   */
+  getMusicPath(userId: string, projectId: string): string {
+    return `users/${userId}/projects/${projectId}/background-music.wav`;
+  }
+
+  /**
    * Generate storage paths for custom thumbnails
    */
-  getCustomThumbnailPath(userId: string, projectId: string): string {
+  getThumbnailPath(userId: string, projectId: string): string {
     return `users/${userId}/projects/${projectId}/thumbnail.jpg`;
+  }
+
+  /**
+   * Generate storage paths for final video
+   */
+  getFinalVideoPath(userId: string, projectId: string): string {
+    return `users/${userId}/projects/${projectId}/final-video.mp4`;
   }
 }

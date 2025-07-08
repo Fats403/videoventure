@@ -14,7 +14,6 @@ export interface FalMusicModel {
   id: string;
   name: string;
   description: string;
-  supportedDurations: number[];
   costPerSecond: number;
   defaultConfig: Record<string, any>;
 }
@@ -83,7 +82,6 @@ export const FAL_MUSIC_MODELS: Record<string, FalMusicModel> = {
     name: "CassetteAI Music Generator",
     description:
       "High-quality AI music generation with customizable styles and moods",
-    supportedDurations: [30, 60, 120, 180],
     costPerSecond: 0.02,
     defaultConfig: {},
   },
@@ -107,11 +105,6 @@ export function getFalMusicModel(modelId: MusicModel): FalMusicModel {
     throw new Error(`Fal music model '${modelId}' not found`);
   }
   return model;
-}
-
-// Keep the old function for backward compatibility
-export function getFalModel(modelId: VideoModel): FalVideoModel {
-  return getFalVideoModel(modelId);
 }
 
 export function getAvailableVideoModels(): FalVideoModel[] {

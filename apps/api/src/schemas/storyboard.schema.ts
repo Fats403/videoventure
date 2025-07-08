@@ -60,6 +60,7 @@ export const SceneBreakdownRequestSchema = z.object({
   storyboard: storyboardDataSchema,
   settings: settingsDataSchema,
   characters: z.array(CharacterApiSchema).optional(),
+  projectId: z.string(),
 });
 
 // Updated Scene breakdown LLM response schema to include music description

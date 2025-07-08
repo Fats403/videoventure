@@ -230,6 +230,7 @@ export const videoRouter = createTRPCRouter({
               settings: input.settings,
               characters:
                 selectedCharacters.length > 0 ? selectedCharacters : undefined,
+              projectId: input.projectId,
             }),
           },
         );

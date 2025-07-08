@@ -107,7 +107,9 @@ export const storyboardRoutes: FastifyPluginAsync = async function (fastify) {
     handler: async (request, reply) => {
       try {
         const breakdown = await storyboardController.generateSceneBreakdown(
-          request.body
+          request.body,
+          request.userId!,
+          request.body.projectId
         );
         reply.send(breakdown);
       } catch (error: unknown) {
