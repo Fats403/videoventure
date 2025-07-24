@@ -11,36 +11,13 @@ import {
   validatorCompiler,
   FastifyZodOpenApiTypeProvider,
 } from "fastify-zod-openapi";
-import { Queue } from "bullmq";
-import { VideoService } from "./services/video.service";
 import { storyboardRoutes } from "./routes/storyboard.routes";
 import { voiceRoutes } from "./routes/voice.routes";
 import { characterRoutes } from "./routes/character.routes";
+import { videoRoutes } from "./routes/video.routes";
 
 // Load environment variables
 const PORT = process.env.PORT || 6969;
-const REDIS_HOST = process.env.REDIS_HOST || "localhost";
-const REDIS_PORT = parseInt(process.env.REDIS_PORT || "6379");
-
-// Initialize BullMQ queue
-const videoQueue = new Queue("video-processing", {
-  connection: {
-    host: REDIS_HOST,
-    port: REDIS_PORT,
-  },
-  defaultJobOptions: {
-    attempts: 1,
-    backoff: {
-      type: "exponential",
-      delay: 10000,
-    },
-    removeOnComplete: false,
-    removeOnFail: true,
-  },
-});
-
-// Initialize services
-const videoService = new VideoService(videoQueue);
 
 // Start server
 const start = async () => {
@@ -138,6 +115,7 @@ const start = async () => {
       await instance.register(storyboardRoutes);
       await instance.register(voiceRoutes);
       await instance.register(characterRoutes);
+      await instance.register(videoRoutes);
     });
 
     // Global error handling

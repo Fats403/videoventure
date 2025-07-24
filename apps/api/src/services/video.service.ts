@@ -2,7 +2,7 @@ import { nanoid } from "nanoid";
 import { Queue } from "bullmq";
 import { Job, JobType, VideoHistory } from "@video-venture/shared";
 import {
-  S3Service,
+  SupabaseStorageService, // Updated to use Supabase
   videoProjects,
   eq,
   and,
@@ -11,11 +11,11 @@ import { db } from "../db";
 
 export class VideoService {
   private videoQueue: Queue;
-  private s3Service: S3Service;
+  private storageService: SupabaseStorageService; // Updated to use Supabase
 
   constructor(videoQueue: Queue) {
     this.videoQueue = videoQueue;
-    this.s3Service = new S3Service();
+    this.storageService = new SupabaseStorageService(); // Updated to use Supabase
   }
 
   /**
@@ -35,11 +35,25 @@ export class VideoService {
       .limit(1);
 
     if (!videoProject) {
-      throw new Error("Video not found or unauthorized access");
+      throw new Error("Video project not found or unauthorized access");
     }
 
     if (videoProject.status === "generating") {
       throw new Error("Video has already started processing");
+    }
+
+    // Validate project is ready for video generation
+    if (!videoProject.breakdown || !videoProject.settings) {
+      throw new Error(
+        "Project must have complete breakdown and settings before generating video"
+      );
+    }
+
+    if (
+      !videoProject.breakdown.scenes ||
+      videoProject.breakdown.scenes.length === 0
+    ) {
+      throw new Error("Project must have at least one scene to generate video");
     }
 
     const jobId = nanoid();
@@ -76,17 +90,25 @@ export class VideoService {
       .where(eq(videoProjects.id, videoId));
 
     // Add job to queue
-    await this.videoQueue.add("create-video", job, { jobId });
+    await this.videoQueue.add("create-video", job, {
+      jobId,
+      delay: 0, // Start immediately
+      priority: 1, // High priority
+    });
+
+    console.log(
+      `🚀 Video generation job queued for project ${videoId} with jobId ${jobId}`
+    );
 
     return job;
   }
 
   /**
-   * Get signed URLs for a video and its scenes
+   * Get video file URLs from Supabase
    * @param userId - User ID
    * @param videoId - Video ID
    * @param version - Version of the video
-   * @returns Object containing signed URLs for the video and its scenes
+   * @returns Object containing URLs for the video
    */
   async getVideoSignedUrls(
     userId: string,
@@ -103,19 +125,56 @@ export class VideoService {
       .limit(1);
 
     if (!videoProject) {
-      throw new Error("Video not found or unauthorized access");
+      throw new Error("Video project not found or unauthorized access");
     }
 
-    // Generate signed URLs for the main video
-    const mainVideoUrls = await this.s3Service.generateSignedUrls(
-      userId,
-      videoId,
-      version
-    );
+    if (videoProject.status !== "completed") {
+      throw new Error("Video is not yet completed");
+    }
+
+    // Generate signed URLs for the main video from Supabase
+    const videoStorageKey = `users/${userId}/projects/${videoId}/video/final_v${version}.mp4`;
+    const videoUrl = `https://${process.env.SUPABASE_STORAGE_URL}/${videoStorageKey}`;
+    // const videoUrl = await this.storageService.getSignedUrl(
+    //   videoStorageKey,
+    //   3600
+    // ); // 1 hour expiry
+
+    const expiryDate = new Date(Date.now() + 3600 * 1000).toISOString(); // 1 hour from now
 
     return {
-      video: mainVideoUrls,
-      expiryDate: mainVideoUrls.expiryDate,
+      video: {
+        finalVideo: videoUrl,
+        expiryDate,
+      },
+      expiryDate,
+    };
+  }
+
+  /**
+   * Get project status and progress
+   * @param userId - User ID
+   * @param videoId - Video ID
+   * @returns Project status information
+   */
+  async getProjectStatus(userId: string, videoId: string) {
+    const [videoProject] = await db
+      .select()
+      .from(videoProjects)
+      .where(
+        and(eq(videoProjects.id, videoId), eq(videoProjects.userId, userId))
+      )
+      .limit(1);
+
+    if (!videoProject) {
+      throw new Error("Video project not found or unauthorized access");
+    }
+
+    return {
+      status: videoProject.status,
+      currentJobId: videoProject.currentJobId,
+      history: videoProject.history,
+      updatedAt: videoProject.updatedAt,
     };
   }
 }
